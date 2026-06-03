@@ -61,8 +61,10 @@ int WINAPI wWinMain(HINSTANCE handle_of_instance, HINSTANCE non_needed, PWSTR co
 	// forcibly paints the window in now.
 	UpdateWindow(cur_win);
 
-	MSG message;
-	while(GetMessageW())
+	MSG msg;
+	while (GetMessage(&msg, NULL, 0, 0)) {
+
+	}
 	return -1;
 }
 
