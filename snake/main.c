@@ -11,6 +11,8 @@ HWND global_cur_win;
 LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM key_pressed, LPARAM extra_msg_info);
 void Resize(HWND hwnd, UINT code_of_message, int width, int height);
 void SetHatchBrushBackground(HDC hdc, BOOL transparent);
+void SetWindowBackground(HDC hdc, PAINTSTRUCT pt);
+void Eyes(HDC hdc);
 
 int WINAPI wWinMain(HINSTANCE handle_of_instance, HINSTANCE not_needed, PWSTR command_line, int flag_min_max_normal) {//PWSTR=wchar_t*.
 	global_hInstance = handle_of_instance;
@@ -50,8 +52,8 @@ int WINAPI wWinMain(HINSTANCE handle_of_instance, HINSTANCE not_needed, PWSTR co
 		class_name, // the windows class name. (in, optional) 
 		window_name, // the windows name. (in, optional)
 		WS_OVERLAPPEDWINDOW, // the window style(old vertion). (in)
-		CW_USEDEFAULT, CW_USEDEFAULT, // default x y coordinates. (in)
-		500, 500, // width and height of the window. (in)
+		0, 0, // for default x y coordinates CW_USEDEFAULT. (in)
+		2500, 800, // width and height of the window. (in)
 		NULL, // this is not a child so we dont have a Parent window. (in, optional)
 		NULL, // also NULL for the same reason. (in, optional)
 		handle_of_instance, // handle of the instance. (in, optional)
@@ -78,7 +80,7 @@ int WINAPI wWinMain(HINSTANCE handle_of_instance, HINSTANCE not_needed, PWSTR co
 	{
 		// If the message is -1 that means that the hWnd is invalid so we give an error.
 		if (get_message_val == -1) {
-			int ans = MessageBox(NULL, TEXT("Invalid HWND - Window Does Not Exist.\n Do You Want To Try Again?"), TEXT("ERROR."), MB_YESNO);
+			int ans = MessageBox(NULL, TEXT("Invalid HWND - Window Does Not Exist.\n Do You Want To Try Again?"), TEXT("ERROR."), MB_YESNO | MB_ICONQUESTION);
 			// If the answer was yes, the user wants to continue we continue
 			if (ans == IDYES) {
 				continue;
@@ -110,22 +112,31 @@ LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM wParam,
 		}
 
 		// Automatically called when we create the window. We can also manualy call.
-		case WM_PAINT: 
+		case WM_PAINT:
 		{
 			HDC hdc;
 			PAINTSTRUCT pt;
-			TCHAR text[] = L"Test.";
 
 			// We get the window ready to be painted.
 			hdc = BeginPaint(key_of_window, &pt);
 
-			// We set the background and text colours.
-			SetBkColor(hdc, RGB(180, 255, 255));
-			SetTextColor(hdc, RGB(255, 0, 0));
+			// We set the background of text and text colours.
+			// TCHAR text[] = L"Welcome To My Window.";
+			// SetBkColor(hdc, RGB(255, 255, 255));
+			// SetTextColor(hdc, RGB(0, 255, 0));
+			// TextOut(hdc, 5, 5, text, _tcslen(text));
 			// We print the text with our colours.
+			// Not used in the smiley face.
+		
+			// We set the background of the window to black using the function.
+			SetWindowBackground(hdc, pt);
 
-			TextOut(hdc, 5, 5, text, _tcslen(text));
-			SetHatchBrushBackground(hdc, TRUE);
+			// Calls the function that draws the rectangle with vertical lines.
+			// SetHatchBrushBackground(hdc, TRUE);
+			// Also not used in smiley face
+
+			// We call the function to create the eyes.
+			Eyes(hdc);
 
 			// We must end the painting.
 			EndPaint(key_of_window, &pt);
@@ -133,13 +144,13 @@ LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM wParam,
 		}
 
 		// If the user is done resizing.
-		case WM_EXITSIZEMOVE: 
+		case WM_EXITSIZEMOVE:
 		{
 			// In this case wParam is the flag that indicates if the window is minimized maximized or normal.
 			// The lParam has the new height and width in it. The first 16 bits are the hieght and the last 16 are width.
 			int height = HIWORD(lParam);
 			int width = LOWORD(lParam);
-			
+
 			Resize(key_of_window, (UINT)wParam, width, height);
 		}
 
@@ -149,26 +160,39 @@ LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM wParam,
 			// If that key was escape.
 			if (wParam == VK_ESCAPE) {
 				// We close the window.
-				PostQuitMessage(0);
-				return 0;
+				if (MessageBox(key_of_window, L"Are You Sure You Want To Quit?", L"Quit Menu", MB_YESNO | MB_ICONQUESTION) == IDYES) {
+					DestroyWindow(key_of_window);
+				}
+				else {
+					return 0;
+				}
 			}
 			else {
 				// Use the default.
 				return DefWindowProc(key_of_window, code_of_msg, wParam, lParam);
 			}
 		}
-		
+
+		// If the user closes the widnow with the x at the top right.
+		case WM_CLOSE:
+		{
+			if (MessageBox(key_of_window, L"Are You Sure You Want To Quit?", L"Quit Menu", MB_YESNO | MB_ICONQUESTION) == IDYES) {
+				DestroyWindow(key_of_window);
+			}
+			else {
+				return 0;
+			}
+		}
 	}
-	
 	// Use default for the rest of the codes.
 	return DefWindowProc(key_of_window, code_of_msg, wParam, lParam);
 }
+
 void Resize(HWND hwnd, UINT code_of_message, int width, int height) {
 	// If the window was resized we get here(After we are done resizing).
 	MessageBox(hwnd, L"Resize Dected.", L"Info.", MB_OK);
-	// Direct call to paint.
-	PostMessage(hwnd, WM_PAINT, 0, 0);
-	
+	// Direct call to paint. We send NULL because we have no specific spot to repaint. We semd true because we want to repaint the background.
+	InvalidateRect(hwnd, NULL, TRUE);
 }
 
 void SetHatchBrushBackground(HDC hdc, BOOL transparent) {
@@ -176,6 +200,7 @@ void SetHatchBrushBackground(HDC hdc, BOOL transparent) {
 	HBRUSH hSolidBrush = CreateSolidBrush(RGB(0, 0, 255));
 	// It fills the empty spaces between the hatch lines.
 	SetBkColor(hdc, RGB(255, 0, 0));
+
 	// If we want it to be transparend type we set it to it else opaque. (types of background settings)
 	if (transparent == TRUE) {
 		SetBkMode(hdc, TRANSPARENT);
@@ -183,12 +208,30 @@ void SetHatchBrushBackground(HDC hdc, BOOL transparent) {
 	else {
 		SetBkMode(hdc, OPAQUE);
 	}
+
 	// We get the default brush hdc had so we can put it back in at the end to allow us to delete the other brushes. We also equip hSolidBrush to hdc.
 	HBRUSH default_brush = (HBRUSH)SelectObject(hdc, hSolidBrush);
+
+	// If we failed to create hSolidBrush.
+	if (hSolidBrush == NULL) {
+		// We dont have to delete anything because we failed to create the first brush.
+		MessageBox(NULL, L"Failed To Create Hatch Brush.", _T("ERROR."), MB_OK);
+		return;
+	}
 	// Create a Rectangle with those dimentions and use hdc on it meaning use the brush. (0,0) is top left corner.
 	Rectangle(hdc, 50, 40, 400, 500);
 	// We create a hatch brush that is vertical lines in black.
-	HBRUSH hHatchBrush = CreateHatchBrush(HS_VERTICAL , RGB(0, 0, 0));
+	HBRUSH hHatchBrush = CreateHatchBrush(HS_VERTICAL, RGB(0, 0, 0));
+
+	// If we failed to create the brush:
+	if (hHatchBrush == NULL) {
+		// Give hdc the default brush back so we can delete the brush(hSolidBrush because he was already created without a problem).
+		SelectObject(hdc, default_brush);
+		DeleteObject(hSolidBrush);
+		MessageBox(NULL, L"Failed To Create Hatch Brush.", _T("ERROR."), MB_OK);
+		return;
+	}
+
 	// We bunch the hdc with the new brush, replacing the old one.
 	SelectObject(hdc, hHatchBrush);
 	// We create a new rectangle in hdc with our new brush(it sits on top of the old one).
@@ -199,5 +242,32 @@ void SetHatchBrushBackground(HDC hdc, BOOL transparent) {
 	// We manually delete both brushes because they dont get deleted automatically (exept if they are default brushes).
 	DeleteObject(hSolidBrush);
 	DeleteObject(hHatchBrush);
+}
+
+void SetWindowBackground(HDC hdc, PAINTSTRUCT pt) {
+	// We use the FillRect function to fill in the rectangle in black. The rectangle is the window in this case.
+	FillRect(hdc, &pt.rcPaint, CreateSolidBrush(RGB(0, 0, 0)));
+}
+
+void Eyes(HDC hdc) {
+	// We create the white part of the eye and put it in hdc.
+	HBRUSH outer_eye = CreateSolidBrush(RGB(255, 255, 255));
+	HBRUSH default_brush = (HBRUSH)SelectObject(hdc, outer_eye);
+	//Create each eye
+	Ellipse(hdc, 600, 150, 650, 200);
+	Ellipse(hdc, 850, 150, 900, 200);
+
+	// We create the inner eye.
+	HBRUSH inner_eye = CreateSolidBrush(RGB(0, 0, 0));
+	SelectObject(hdc, inner_eye);
+	Ellipse(hdc, 620, 173, 632, 185);
+	Ellipse(hdc, 870, 173, 882, 185);
+
+	// We reput the default brush so we can delete the ones we created.
+	SelectObject(hdc, default_brush);
+
+	// We delete the brushes we created.
+	DeleteObject(outer_eye);
+	DeleteObject(inner_eye);
 }
 
