@@ -13,6 +13,7 @@ void Resize(HWND hwnd, UINT code_of_message, int width, int height);
 void SetHatchBrushBackground(HDC hdc, BOOL transparent);
 void SetWindowBackground(HDC hdc, PAINTSTRUCT pt);
 void Eyes(HDC hdc);
+void head(HDC hdc);
 
 int WINAPI wWinMain(HINSTANCE handle_of_instance, HINSTANCE not_needed, PWSTR command_line, int flag_min_max_normal) {//PWSTR=wchar_t*.
 	global_hInstance = handle_of_instance;
@@ -135,6 +136,8 @@ LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM wParam,
 			// SetHatchBrushBackground(hdc, TRUE);
 			// Also not used in smiley face
 
+			//We call the function to create the head.
+			head(hdc);
 			// We call the function to create the eyes.
 			Eyes(hdc);
 
@@ -249,25 +252,41 @@ void SetWindowBackground(HDC hdc, PAINTSTRUCT pt) {
 	FillRect(hdc, &pt.rcPaint, CreateSolidBrush(RGB(0, 0, 0)));
 }
 
+// We create the eyes for the similey face.
 void Eyes(HDC hdc) {
 	// We create the white part of the eye and put it in hdc.
-	HBRUSH outer_eye = CreateSolidBrush(RGB(255, 255, 255));
-	HBRUSH default_brush = (HBRUSH)SelectObject(hdc, outer_eye);
+	HBRUSH outer_eye_brush = CreateSolidBrush(RGB(255, 255, 255));
+	HBRUSH default_brush = (HBRUSH)SelectObject(hdc, outer_eye_brush);
 	//Create each eye
-	Ellipse(hdc, 600, 150, 650, 200);
-	Ellipse(hdc, 850, 150, 900, 200);
+	Ellipse(hdc, 625, 220, 675, 270);
+	Ellipse(hdc, 825, 220, 875, 270);
 
 	// We create the inner eye.
-	HBRUSH inner_eye = CreateSolidBrush(RGB(0, 0, 0));
-	SelectObject(hdc, inner_eye);
-	Ellipse(hdc, 620, 173, 632, 185);
-	Ellipse(hdc, 870, 173, 882, 185);
+	HBRUSH inner_eye_brush = CreateSolidBrush(RGB(0, 0, 0));
+	SelectObject(hdc, inner_eye_brush);
+	Ellipse(hdc, 645, 243, 657, 255);
+	Ellipse(hdc, 845, 243, 857, 255);
 
 	// We reput the default brush so we can delete the ones we created.
 	SelectObject(hdc, default_brush);
 
-	// We delete the brushes we created.
-	DeleteObject(outer_eye);
-	DeleteObject(inner_eye);
+	// We delete the custom brushes we created.
+	DeleteObject(outer_eye_brush);
+	DeleteObject(inner_eye_brush);
 }
 
+// We create the head for the similey face.
+void head(HDC hdc) {
+	// We create a blue brush for the head and put it in hdc.
+	HBRUSH head = CreateSolidBrush(RGB(0, 0, 255));
+	HBRUSH default_brush = (HBRUSH)SelectObject(hdc, head);
+
+	// We create the head with the brush.
+	Ellipse(hdc, 500, 100, 1000, 600);
+
+	// We reput the default brush so we can delete the ones we created.
+	SelectObject(hdc, default_brush);
+
+	// We detele the custom brush we created.
+	DeleteObject(head);
+}
