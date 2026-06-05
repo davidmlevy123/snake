@@ -12,8 +12,11 @@ LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM key_pre
 void Resize(HWND hwnd, UINT code_of_message, int width, int height);
 void SetHatchBrushBackground(HDC hdc, BOOL transparent);
 void SetWindowBackground(HDC hdc, PAINTSTRUCT pt);
+void words_for_window(HWND hwnd, HDC hdc);
 void Eyes(HDC hdc);
-void head(HDC hdc);
+void Head(HDC hdc);
+void Mouth(HDC hdc);
+void smiley_face(HDC hdc);
 
 int WINAPI wWinMain(HINSTANCE handle_of_instance, HINSTANCE not_needed, PWSTR command_line, int flag_min_max_normal) {//PWSTR=wchar_t*.
 	global_hInstance = handle_of_instance;
@@ -33,8 +36,8 @@ int WINAPI wWinMain(HINSTANCE handle_of_instance, HINSTANCE not_needed, PWSTR co
 	// IDC is the ID for the Cursor and ARROW is the standered one(UPARROW is also used).
 	window_blueprint.hCursor = LoadCursor(NULL, IDC_ARROW);
 
-	// We set the background to the default.
-	window_blueprint.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+	// We set the background to black. For the default (HBRUSH)(COLOR_WINDOW + 1).
+	window_blueprint.hbrBackground = CreateSolidBrush(RGB(0, 0, 0));
 
 	// We set it to NULL because we dont have a menu built yet.
 	window_blueprint.lpszMenuName = NULL;
@@ -60,17 +63,58 @@ int WINAPI wWinMain(HINSTANCE handle_of_instance, HINSTANCE not_needed, PWSTR co
 		handle_of_instance, // handle of the instance. (in, optional)
 		NULL  //this is LPVOID we dont have any extra stuff so its NULL. (in, optional)
 	);
-	global_cur_win = cur_win;
+	
 	if (cur_win == NULL) { // If we failed to open the current window: 
 		// We print the ERROR message.
 		MessageBox(NULL, TEXT("Failed To Create Window."), TEXT("ERROR."), MB_OK | MB_ICONEXCLAMATION);
 		return 2;
 	}
+	global_cur_win = cur_win;
+	// The blueprint for the child is very simular to the main_window_blueprint we just change the icons and cursor.
+	WNDCLASSEX child_window_blueprint = { 0 }; 
+	child_window_blueprint.cbSize = sizeof(WNDCLASSEX);
+	child_window_blueprint.style = CS_HREDRAW | CS_VREDRAW; 
+	child_window_blueprint.lpfnWndProc = WindowProc;
+	child_window_blueprint.cbClsExtra = 0;
+	child_window_blueprint.cbWndExtra = 0;
+	child_window_blueprint.hInstance = handle_of_instance;
+	child_window_blueprint.hIcon = LoadIcon(NULL, IDI_WINLOGO); 
+	child_window_blueprint.hCursor = LoadCursor(NULL, IDC_HAND);
+	child_window_blueprint.hbrBackground = CreateSolidBrush(RGB(255, 255, 255));
+	child_window_blueprint.lpszMenuName = TEXT("Menu.");
+	child_window_blueprint.lpszClassName = TEXT("Child Window.");
+	child_window_blueprint.hIconSm = LoadIcon(NULL, IDI_WINLOGO);
 
-	// Gets the windows spot ready to be painted in and puts painting the inside in the waiting queue. The flag is for tellimg what way to prepare the window(minimized, full screen, normal and so on)
-	ShowWindow(cur_win, flag_min_max_normal);
+	if (!RegisterClassEx(&child_window_blueprint)) {
+		MessageBox(NULL, TEXT("Failed To Create Child Class."), TEXT("ERROR."), MB_OK | MB_ICONEXCLAMATION);
+		return 1;
+	}
+	
+	HWND child_win = CreateWindowEx( // We create the child window.
+		WS_EX_OVERLAPPEDWINDOW, // The style of the window.
+		TEXT("Child Window."), // The window class name.
+		TEXT("Menu."), // The windows name.
+		WS_CHILD | WS_VISIBLE, // Setting it up as a child.
+		1371, 488, 160, 300, // X, Y, Width, Height.
+		cur_win, // Parent handle. 
+		(HMENU)1, // We give the window the child_id 1 and cast it into a HMENU type.
+		handle_of_instance, NULL); // Handle for the .exe file and extra stuff for the window(NULL because we don't have).
+
+	if (child_win == NULL) { // If we failed to open the child window: 
+		// We print the ERROR message.
+		MessageBox(NULL, TEXT("Failed To Create Window."), TEXT("ERROR."), MB_OK | MB_ICONEXCLAMATION);
+		return 2;
+	}
+
+	// Gets the windows spot ready to be painted in and puts painting the inside in the waiting queue. We create it maximized.
+	ShowWindow(cur_win, SW_SHOWMAXIMIZED);
 	// Forcibly paints the window in now.
 	UpdateWindow(cur_win);
+
+	// Gets the child window's spot ready. The flag is for tellimg what way to prepare the window(minimized, full screen, normal and so on)
+	ShowWindow(child_win, flag_min_max_normal);
+	// Forcibly paints the window in now.
+	UpdateWindow(child_win);
 
 	MSG msg;
 	// BOOL for the value of the message. As long as its not 0 or -1 we don't care what it is
@@ -97,7 +141,7 @@ int WINAPI wWinMain(HINSTANCE handle_of_instance, HINSTANCE not_needed, PWSTR co
 		TranslateMessage(&msg);
 		// Tells the window to run the message.
 		DispatchMessage(&msg);
-
+		
 	}
 	// We return that because wPram gets the number from PostQuitMessage. 
 	return (int)msg.wParam;
@@ -121,25 +165,15 @@ LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM wParam,
 			// We get the window ready to be painted.
 			hdc = BeginPaint(key_of_window, &pt);
 
-			// We set the background of text and text colours.
-			// TCHAR text[] = L"Welcome To My Window.";
-			// SetBkColor(hdc, RGB(255, 255, 255));
-			// SetTextColor(hdc, RGB(0, 255, 0));
-			// TextOut(hdc, 5, 5, text, _tcslen(text));
-			// We print the text with our colours.
-			// Not used in the smiley face.
-		
-			// We set the background of the window to black using the function.
-			SetWindowBackground(hdc, pt);
+			// Prints the words for the window.
+			words_for_window(key_of_window, hdc);
 
 			// Calls the function that draws the rectangle with vertical lines.
 			// SetHatchBrushBackground(hdc, TRUE);
-			// Also not used in smiley face
+			// Not used in smiley face.
 
-			//We call the function to create the head.
-			head(hdc);
-			// We call the function to create the eyes.
-			Eyes(hdc);
+			// We call teh functiont o create the whole smiley face.
+			smiley_face(hdc);
 
 			// We must end the painting.
 			EndPaint(key_of_window, &pt);
@@ -179,12 +213,7 @@ LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM wParam,
 		// If the user closes the widnow with the x at the top right.
 		case WM_CLOSE:
 		{
-			if (MessageBox(key_of_window, L"Are You Sure You Want To Quit?", L"Quit Menu", MB_YESNO | MB_ICONQUESTION) == IDYES) {
-				DestroyWindow(key_of_window);
-			}
-			else {
-				return 0;
-			}
+			DestroyWindow(key_of_window);
 		}
 	}
 	// Use default for the rest of the codes.
@@ -252,11 +281,35 @@ void SetWindowBackground(HDC hdc, PAINTSTRUCT pt) {
 	FillRect(hdc, &pt.rcPaint, CreateSolidBrush(RGB(0, 0, 0)));
 }
 
+// Function to add main words to the window. If child: "This Is A Child Window." , If its has no parent: "Welcome To My Window.".
+void words_for_window(HWND hwnd, HDC hdc) {
+	LONG_PTR style;
+	// If the coordinates of the window are relitive to a parent that means it must be a child. 
+	if ((style = GetWindowLongPtr(hwnd, GWL_STYLE)) & WS_CHILD)
+	{
+		TCHAR text[] = L"This Is A Child Window.";
+		SetTextColor(hdc, RGB(0, 255, 0));
+		TextOut(hdc, 5, 5, text, _tcslen(text));
+	}
+	else {
+		// We set the background of text and text colours.
+		TCHAR text[] = L"Welcome To My Window.";
+		SetBkColor(hdc, RGB(255, 255, 255));
+		SetTextColor(hdc, RGB(0, 255, 0));
+		// We print the text with our colours. 
+		TextOut(hdc, 5, 5, text, _tcslen(text));
+	}
+}
+
 // We create the eyes for the similey face.
 void Eyes(HDC hdc) {
+	// We set the background mode to TRANSPARENT mode.
+	SetBkMode(hdc, TRANSPARENT);
+
 	// We create the white part of the eye and put it in hdc.
 	HBRUSH outer_eye_brush = CreateSolidBrush(RGB(255, 255, 255));
 	HBRUSH default_brush = (HBRUSH)SelectObject(hdc, outer_eye_brush);
+
 	//Create each eye
 	Ellipse(hdc, 625, 220, 675, 270);
 	Ellipse(hdc, 825, 220, 875, 270);
@@ -276,7 +329,7 @@ void Eyes(HDC hdc) {
 }
 
 // We create the head for the similey face.
-void head(HDC hdc) {
+void Head(HDC hdc) {
 	// We create a blue brush for the head and put it in hdc.
 	HBRUSH head = CreateSolidBrush(RGB(0, 0, 255));
 	HBRUSH default_brush = (HBRUSH)SelectObject(hdc, head);
@@ -289,4 +342,25 @@ void head(HDC hdc) {
 
 	// We detele the custom brush we created.
 	DeleteObject(head);
+}
+
+// Function to create the mouth.
+void Mouth(HDC hdc) {
+	// We create a green brush for the mouth and put it in hdc
+	HBRUSH mouth_brush = CreateSolidBrush(RGB(255, 0, 0));
+	HBRUSH default_brush = SelectObject(hdc, mouth_brush);
+
+	// A function to create an arc. It has Left, Top, Right, Bottom, StartX, StartY, EndX, EndY.
+	Chord(hdc, 600, 425, 900, 545, 600, 485, 900, 485);
+
+	// Same logic as always.
+	SelectObject(hdc, default_brush);
+	DeleteObject(mouth_brush);
+}
+
+// Funtion to create the smiley face.
+void smiley_face(HDC hdc) {
+	Head(hdc);
+	Eyes(hdc);
+	Mouth(hdc);
 }
