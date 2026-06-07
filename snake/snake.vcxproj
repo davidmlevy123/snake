@@ -131,6 +131,12 @@
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Default</CompileAs>
     </ClCompile>
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="additions.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="additions.rc" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

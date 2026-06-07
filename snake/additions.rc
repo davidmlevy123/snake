@@ -1,0 +1,5 @@
+#include "additions.h"
+
+IDI_SNAKE_LOGO ICON "snake_icon.ico"
+
+IDI_MAIN_SNAKE_LOGO ICON "main_snake_icon.ico"

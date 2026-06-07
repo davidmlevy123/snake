@@ -1,8 +1,9 @@
-#include <windows.h>
+﻿#include <windows.h>
 #include <tchar.h>
+#include "additions.h" // The additions i created.
 
-const wchar_t class_name[] = L"Snake";
-const wchar_t window_name[] = L"Main Window";
+const wchar_t class_name[] = L"Main Window.";
+const wchar_t window_name[] = L"Snake.";
 
 // We have a global hInstance so we can use it in the function and not just main.
 HINSTANCE global_hInstance;
@@ -30,8 +31,8 @@ int WINAPI wWinMain(HINSTANCE handle_of_instance, HINSTANCE not_needed, PWSTR co
 	window_blueprint.cbWndExtra = 0;
 	window_blueprint.hInstance = handle_of_instance;
 
-	// IDI is the ID for Icon and APPLICATION is the standered windows icon. We send null because all built in icons/cursors get NULL.
-	window_blueprint.hIcon = LoadIcon(NULL, IDI_APPLICATION);
+	// We load the icon i created. We use MAKEINTRESOURCE to convert from int to lpcstr
+	window_blueprint.hIcon = LoadIcon(handle_of_instance, MAKEINTRESOURCE(IDI_MAIN_SNAKE_LOGO));
 
 	// IDC is the ID for the Cursor and ARROW is the standered one(UPARROW is also used).
 	window_blueprint.hCursor = LoadCursor(NULL, IDC_ARROW);
@@ -42,7 +43,7 @@ int WINAPI wWinMain(HINSTANCE handle_of_instance, HINSTANCE not_needed, PWSTR co
 	// We set it to NULL because we dont have a menu built yet.
 	window_blueprint.lpszMenuName = NULL;
 	window_blueprint.lpszClassName = class_name;
-	window_blueprint.hIconSm = LoadIcon(NULL, IDI_ASTERISK);
+	window_blueprint.hIconSm = LoadIcon(handle_of_instance, MAKEINTRESOURCE(IDI_SNAKE_LOGO));
 
 	// Is the class creation failed: (the function gets a pointer to a WNDCLASS so we send the address)
 	if (!RegisterClassEx(&window_blueprint)) {
@@ -78,7 +79,8 @@ int WINAPI wWinMain(HINSTANCE handle_of_instance, HINSTANCE not_needed, PWSTR co
 	child_window_blueprint.cbClsExtra = 0;
 	child_window_blueprint.cbWndExtra = 0;
 	child_window_blueprint.hInstance = handle_of_instance;
-	child_window_blueprint.hIcon = LoadIcon(NULL, IDI_WINLOGO); 
+	// IDI is the ID for Icon and APPLICATION is the standered windows icon. We send null because all built in icons/cursors get NULL.
+	child_window_blueprint.hIcon = LoadIcon(NULL, IDI_APPLICATION);
 	child_window_blueprint.hCursor = LoadCursor(NULL, IDC_HAND);
 	child_window_blueprint.hbrBackground = CreateSolidBrush(RGB(255, 255, 255));
 	child_window_blueprint.lpszMenuName = TEXT("Menu.");
@@ -125,15 +127,8 @@ int WINAPI wWinMain(HINSTANCE handle_of_instance, HINSTANCE not_needed, PWSTR co
 	{
 		// If the message is -1 that means that the hWnd is invalid so we give an error.
 		if (get_message_val == -1) {
-			int ans = MessageBox(NULL, TEXT("Invalid HWND - Window Does Not Exist.\n Do You Want To Try Again?"), TEXT("ERROR."), MB_YESNO | MB_ICONQUESTION);
-			// If the answer was yes, the user wants to continue we continue
-			if (ans == IDYES) {
-				continue;
-			}
-			// If the answer is no, we end the program automatically closing the window. This only works because we are in the main.
-			if (ans == IDNO) {
-				return 0;
-			}
+			MessageBox(NULL, TEXT("Message Error."), TEXT("ERROR."), MB_OK | MB_ICONERROR);
+			return -1;
 		}
 
 		// We need to translate the message because pressing a key can have a few meanings depending on shift, keyboared language and more.
@@ -141,8 +136,8 @@ int WINAPI wWinMain(HINSTANCE handle_of_instance, HINSTANCE not_needed, PWSTR co
 		TranslateMessage(&msg);
 		// Tells the window to run the message.
 		DispatchMessage(&msg);
-		
 	}
+
 	// We return that because wPram gets the number from PostQuitMessage. 
 	return (int)msg.wParam;
 }
@@ -204,6 +199,32 @@ LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM wParam,
 					return 0;
 				}
 			}
+
+			// If the key is 'F'(the spot of F on the keyboard). 
+			else if (wParam == 'F') {
+				// We create a pointer to the file path we make it the max size a path can be(260).
+				LPWSTR path[MAX_PATH];
+				// We call the function to get the file name. The name goes into the path and we send MAX_PATH as the size of it. We use the GetModuleHandle function to get the HINSTANCE to tell the program which .exe file we want the path 2. We send NULL so we get the current files HINSTANCE.
+				GetModuleFileName(GetModuleHandle(NULL), path, MAX_PATH);
+				// We create the new message the size of MAX_PATH+32 because the length of the addition is 14, but its better to put a power of 2.
+				WCHAR msg[MAX_PATH + 32];
+
+				// We copy the "Close File: " to the begining of message. 
+				lstrcpyW(msg, L"Close File: ");
+				// We copy the path into it at the end.
+				lstrcatW(msg, path);
+				// We copy the "?" to the end of the msg.
+				lstrcatW(msg, L"?");
+
+				int ans = MessageBox(NULL, msg, L"Closing File: ", MB_YESNO | MB_ICONQUESTION);
+				if (ans == IDNO) {
+					return DefWindowProc(key_of_window, code_of_msg, wParam, lParam);
+				}
+				else {
+					DestroyWindow(key_of_window);
+				}
+			}
+
 			else {
 				// Use the default.
 				return DefWindowProc(key_of_window, code_of_msg, wParam, lParam);
@@ -215,9 +236,14 @@ LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM wParam,
 		{
 			DestroyWindow(key_of_window);
 		}
+
+		// Any other case.
+		default: {
+			// Use default for the rest of the codes.
+			return DefWindowProc(key_of_window, code_of_msg, wParam, lParam);
+
+		}
 	}
-	// Use default for the rest of the codes.
-	return DefWindowProc(key_of_window, code_of_msg, wParam, lParam);
 }
 
 void Resize(HWND hwnd, UINT code_of_message, int width, int height) {
@@ -284,6 +310,7 @@ void SetWindowBackground(HDC hdc, PAINTSTRUCT pt) {
 // Function to add main words to the window. If child: "This Is A Child Window." , If its has no parent: "Welcome To My Window.".
 void words_for_window(HWND hwnd, HDC hdc) {
 	LONG_PTR style;
+
 	// If the coordinates of the window are relitive to a parent that means it must be a child. 
 	if ((style = GetWindowLongPtr(hwnd, GWL_STYLE)) & WS_CHILD)
 	{
