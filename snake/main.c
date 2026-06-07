@@ -9,7 +9,11 @@ const wchar_t window_name[] = L"Snake.";
 HINSTANCE global_hInstance;
 HWND global_cur_win;
 
+// The bool to know if we should draw the smiley face in the WM_PAINT.
+static BOOL draw_face = FALSE;
+
 LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM key_pressed, LPARAM extra_msg_info);
+INT_PTR CALLBACK AboutDialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam);
 void Resize(HWND hwnd, UINT code_of_message, int width, int height);
 void SetHatchBrushBackground(HDC hdc, BOOL transparent);
 void SetWindowBackground(HDC hdc, PAINTSTRUCT pt);
@@ -40,8 +44,8 @@ int WINAPI wWinMain(HINSTANCE handle_of_instance, HINSTANCE not_needed, PWSTR co
 	// We set the background to black. For the default (HBRUSH)(COLOR_WINDOW + 1).
 	window_blueprint.hbrBackground = CreateSolidBrush(RGB(0, 0, 0));
 
-	// We set it to NULL because we dont have a menu built yet.
-	window_blueprint.lpszMenuName = NULL;
+	// We set it to the menu we built in addition.h and in additions.rc.
+	window_blueprint.lpszMenuName = MAKEINTRESOURCE(IDR_MAIN_MENU);
 	window_blueprint.lpszClassName = class_name;
 	window_blueprint.hIconSm = LoadIcon(handle_of_instance, MAKEINTRESOURCE(IDI_SNAKE_LOGO));
 
@@ -144,13 +148,34 @@ int WINAPI wWinMain(HINSTANCE handle_of_instance, HINSTANCE not_needed, PWSTR co
 
 LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM wParam, LPARAM lParam) {
 	switch (code_of_msg) {
-		case WM_DESTROY:
-		{
-			// If the case is to leave we end the program and window. We need the PostQuitMessage becasue if we dont have it the function will return 0 without closing the window.
-			PostQuitMessage(0);
-			return 0;
-		}
 
+		// Called when a menu item is selected or control sends a message or an accelerator key is pressed.
+		case WM_COMMAND: {
+			// LOWORD retruns the last 16 bits. Simular use to EXIRSIZEMOVE.
+			switch (LOWORD(wParam)) {
+				// If the exit was pressed in the menu.
+				case ID_FILE_EXIT: {
+					// Same as PostMessage but here we go to the front of the queue. 
+					SendMessage(key_of_window, WM_CLOSE, 0, 0);
+					break;
+				}
+
+				// If the New Game was pressed in the menu
+				case ID_FILE_NEW_GAME: 
+					DialogBox(
+						GetModuleHandle(NULL),           // We get the hinstance of the current process.
+						MAKEINTRESOURCE(IDD_BASIC_DIALOG), // The ID of the dialog in LWCTSTR.
+						key_of_window,                   // The main window.
+						AboutDialogProc                  // The function that controls the dialog(its lower dowm).
+					);
+					//I havent made any of the game logic yet so for now it does nothing.
+					MessageBox(key_of_window, L"Game Not Created yet", L"ERROR:", MB_OK);// We can use TEXT(""), _T("") or L"".
+					draw_face = TRUE;
+					InvalidateRect(key_of_window, NULL, TRUE);
+					break;
+				}
+			}
+		
 		// Automatically called when we create the window. We can also manualy call.
 		case WM_PAINT:
 		{
@@ -167,12 +192,19 @@ LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM wParam,
 			// SetHatchBrushBackground(hdc, TRUE);
 			// Not used in smiley face.
 
-			// We call teh functiont o create the whole smiley face.
-			smiley_face(hdc);
+			if (draw_face) {
+				// We call the function to create the whole smiley face.
+				smiley_face(hdc);
+				// We set the draw_face to false so next time we dont draw unless we want too.
+				draw_face = FALSE;
+				// We pause everthing for 5 seconds and then delete the face. After the sleep 
+				Sleep(1000);
+				InvalidateRect(key_of_window, NULL, TRUE);
+			}
 
 			// We must end the painting.
 			EndPaint(key_of_window, &pt);
-			return 0;
+			break;
 		}
 
 		// If the user is done resizing.
@@ -189,45 +221,48 @@ LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM wParam,
 		// If a key was pressed.
 		case WM_KEYDOWN:
 		{
-			// If that key was escape.
-			if (wParam == VK_ESCAPE) {
-				// We close the window.
-				if (MessageBox(key_of_window, L"Are You Sure You Want To Quit?", L"Quit Menu", MB_YESNO | MB_ICONQUESTION) == IDYES) {
-					DestroyWindow(key_of_window);
+			switch(wParam)
+			{
+				// If that key was escape.
+				case VK_ESCAPE: {
+					// We close the window.
+					if (MessageBox(key_of_window, L"Are You Sure You Want To Quit?", L"Quit Menu", MB_YESNO | MB_ICONQUESTION) == IDYES) {
+						DestroyWindow(key_of_window);
+					}
+					else {
+						return 0;
+					}
 				}
-				else {
-					return 0;
+
+				// If the key is 'P'(the spot of P on the keyboard). 
+				case  'P': {
+					// We create a pointer to the file path we make it the max size a path can be(260).
+					LPWSTR path[MAX_PATH];
+					// We call the function to get the file name. The name goes into the path and we send MAX_PATH as the size of it. We use the GetModuleHandle function to get the HINSTANCE to tell the program which .exe file we want the path 2. We send NULL so we get the current files HINSTANCE.
+					GetModuleFileName(GetModuleHandle(NULL), path, MAX_PATH);
+					// We create the new message the size of MAX_PATH+32 because the length of the addition is 14, but its better to put a power of 2.
+					WCHAR msg[MAX_PATH + 32];
+
+					// We copy the "Close File: " to the begining of message. 
+					lstrcpyW(msg, L"Close File: ");
+					// We copy the path into it at the end.
+					lstrcatW(msg, path);
+					// We copy the "?" to the end of the msg.
+					lstrcatW(msg, L"?");
+
+					int ans = MessageBox(NULL, msg, L"Closing File: ", MB_YESNO | MB_ICONQUESTION);
+					if (ans == IDNO) {
+						return DefWindowProc(key_of_window, code_of_msg, wParam, lParam);
+					}
+					else {
+						DestroyWindow(key_of_window);
+					}
 				}
-			}
 
-			// If the key is 'F'(the spot of F on the keyboard). 
-			else if (wParam == 'F') {
-				// We create a pointer to the file path we make it the max size a path can be(260).
-				LPWSTR path[MAX_PATH];
-				// We call the function to get the file name. The name goes into the path and we send MAX_PATH as the size of it. We use the GetModuleHandle function to get the HINSTANCE to tell the program which .exe file we want the path 2. We send NULL so we get the current files HINSTANCE.
-				GetModuleFileName(GetModuleHandle(NULL), path, MAX_PATH);
-				// We create the new message the size of MAX_PATH+32 because the length of the addition is 14, but its better to put a power of 2.
-				WCHAR msg[MAX_PATH + 32];
-
-				// We copy the "Close File: " to the begining of message. 
-				lstrcpyW(msg, L"Close File: ");
-				// We copy the path into it at the end.
-				lstrcatW(msg, path);
-				// We copy the "?" to the end of the msg.
-				lstrcatW(msg, L"?");
-
-				int ans = MessageBox(NULL, msg, L"Closing File: ", MB_YESNO | MB_ICONQUESTION);
-				if (ans == IDNO) {
+				default: {
+					// Use the default.
 					return DefWindowProc(key_of_window, code_of_msg, wParam, lParam);
 				}
-				else {
-					DestroyWindow(key_of_window);
-				}
-			}
-
-			else {
-				// Use the default.
-				return DefWindowProc(key_of_window, code_of_msg, wParam, lParam);
 			}
 		}
 
@@ -235,6 +270,14 @@ LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM wParam,
 		case WM_CLOSE:
 		{
 			DestroyWindow(key_of_window);
+		}
+
+		// Automatically called after WM_CLOSE.
+		case WM_DESTROY:
+		{
+			// If the case is to leave we end the program and window. We need the PostQuitMessage becasue if we dont have it the function will return 0 without closing the window.
+			PostQuitMessage(0);
+			return 0;
 		}
 
 		// Any other case.
@@ -246,6 +289,26 @@ LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM wParam,
 	}
 }
 
+INT_PTR CALLBACK AboutDialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+	switch (uMsg) {
+		// Called the moment before the dialog appears on screen
+		case WM_INITDIALOG:
+			return (INT_PTR)TRUE;
+
+		// Handles buttons clicked inside the dialog
+		case WM_COMMAND:
+			// If they click our OK button, or press the red X (IDCANCEL)
+			if (LOWORD(wParam) == ID_OK_BUTTON) {
+				// This destroys the dialog and unfreezes the main game window
+				EndDialog(hwndDlg, LOWORD(wParam));
+				return (INT_PTR)TRUE;
+			}
+		break;
+	}
+
+	// Return FALSE if we didn't handle the message
+	return (INT_PTR)FALSE;
+}
 void Resize(HWND hwnd, UINT code_of_message, int width, int height) {
 	// If the window was resized we get here(After we are done resizing).
 	MessageBox(hwnd, L"Resize Dected.", L"Info.", MB_OK);

@@ -1,5 +1,43 @@
+#include <windows.h>
 #include "additions.h"
 
+// We give meaning to the defanition (assosiate it with the correct file).
 IDI_SNAKE_LOGO ICON "snake_icon.ico"
-
 IDI_MAIN_SNAKE_LOGO ICON "main_snake_icon.ico"
+
+// The menu's code.
+IDR_MAIN_MENU MENU 
+BEGIN 
+	// The letter after the & + alt is a shortcut to open that spot.
+	POPUP "&File"
+	BEGIN	
+		MENUITEM "&New Game.", ID_FILE_NEW_GAME
+		// A line between the 2 items in the menu.
+		MENUITEM SEPARATOR
+		// Because we want the alt+x to be the shortcut we have the & after the E.
+		MENUITEM "E&xit" , ID_FILE_EXIT
+	END
+	POPUP "&Stuff" // We make a seconed part to the menu
+	BEGIN
+		// We dont have to use the header we can code an ID number here.
+		MENUITEM "&Nothing Here", 300 
+	END
+END
+
+// Dailogs code.
+IDD_BASIC_DIALOG DIALOGEX 0, 0, 160, 80// Coordinates, width and height.
+// The dailogs style.
+STYLE DS_SETFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+// The words it has.
+CAPTION "Snake"
+// Font and font size.
+FONT 8 "MS David"
+BEGIN 
+	// DEFPUSHBUTTON creates the big highlighted button
+	DEFPUSHBUTTON "&Start Game", ID_OK_BUTTON, 55, 57, 50, 14
+	GROUPBOX "Engine Info", -1, 7, 7, 146, 45
+	CTEXT "Snake Engine v1.0", -1, 10, 16, 140, 10
+	CTEXT "Developed by David Levy", -1, 10, 26, 140, 10
+	CTEXT "Powered by pure Win32 & C", -1, 10, 36, 140, 10
+END
+
