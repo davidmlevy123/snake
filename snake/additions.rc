@@ -17,27 +17,49 @@ BEGIN
 		// Because we want the alt+x to be the shortcut we have the & after the E.
 		MENUITEM "E&xit" , ID_FILE_EXIT
 	END
-	POPUP "&Stuff" // We make a seconed part to the menu
+	POPUP "&Settings" // We make a seconed part to the menu  
 	BEGIN
-		// We dont have to use the header we can code an ID number here.
-		MENUITEM "&Nothing Here", 300 
+		// We dont have to use the header we can code an ID number here.( instead id ID_SETTINGS_HELP_OPEN we can have a number)
+		MENUITEM "&Help", ID_SETTINGS_HELP_OPEN 
+		MENUITEM SEPARATOR
+		MENUITEM "&Background Colour", ID_SETTINGS_BK_COLOUR
+		MENUITEM SEPARATOR
+		MENUITEM "&Report A Bug", ID_SETTINGS_BUG
 	END
 END
 
 // Dailogs code.
 IDD_BASIC_DIALOG DIALOGEX 0, 0, 160, 80// Coordinates, width and height.
-// The dailogs style.
+// The dailogs style. 
+// DS_SETFONT - Tells the computer to use the font we set. 
+// DS_MODALFRAME - Raised 3d border.
+// DS_CENTER - Puts the box in the center.
+// WS_POPUP - The dialog can be dragged around.
+// WS_CAPTION - Tells the computer to draw the title.
+// WS_SYSMENU - Give the dialog a menu(x, minimize, maximize).
 STYLE DS_SETFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 // The words it has.
 CAPTION "Snake"
-// Font and font size.
-FONT 8 "MS David"
+// Font(i choose David) and font size.
+FONT 12, "David"
 BEGIN 
 	// DEFPUSHBUTTON creates the big highlighted button
-	DEFPUSHBUTTON "&Start Game", ID_OK_BUTTON, 55, 57, 50, 14
+	DEFPUSHBUTTON "&Start Game", ID_START_GAME_BUTTON, 30, 57, 50, 14
+	// PUSHBUTTON is used for the second button. We only have one DEFPUSHBUTTON per dialog box(normally)
+	PUSHBUTTON "&Cancel", ID_CANCEL_DIALOG, 80, 57, 50 ,14
 	GROUPBOX "Engine Info", -1, 7, 7, 146, 45
 	CTEXT "Snake Engine v1.0", -1, 10, 16, 140, 10
 	CTEXT "Developed by David Levy", -1, 10, 26, 140, 10
 	CTEXT "Powered by pure Win32 & C", -1, 10, 36, 140, 10
 END
 
+// Modeless dialog
+IDD_MODELESS_DIALOG DIALOGEX 0, 0, 160 ,80
+STYLE WS_POPUP | WS_CAPTION | DS_MODALFRAME | DS_CENTER
+EXSTYLE WS_EX_TOOLWINDOW 
+CAPTION "Settings"
+FONT 12, "David"
+BEGIN 
+	DEFPUSHBUTTON "&How To Play", ID_HTP_MENU, 45, 20, 70, 16
+	PUSHBUTTON "&Cancel" , ID_CANCEL_DIALOG, 45, 45, 70, 16
+END

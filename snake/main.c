@@ -8,12 +8,20 @@ const wchar_t window_name[] = L"Snake.";
 // We have a global hInstance so we can use it in the function and not just main.
 HINSTANCE global_hInstance;
 HWND global_cur_win;
+// We make it global so we can save if the dialog is up.
+HWND handle_to_settings = NULL;
 
 // The bool to know if we should draw the smiley face in the WM_PAINT.
 static BOOL draw_face = FALSE;
+static BOOL change_background = FALSE;
+
+// A int to tell the computer the background colour we want.
+UINT bk_colour = BLACKBK;
 
 LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM key_pressed, LPARAM extra_msg_info);
 INT_PTR CALLBACK AboutDialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam);
+INT_PTR CALLBACK SettingsDialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam);
+
 void Resize(HWND hwnd, UINT code_of_message, int width, int height);
 void SetHatchBrushBackground(HDC hdc, BOOL transparent);
 void SetWindowBackground(HDC hdc, PAINTSTRUCT pt);
@@ -135,11 +143,14 @@ int WINAPI wWinMain(HINSTANCE handle_of_instance, HINSTANCE not_needed, PWSTR co
 			return -1;
 		}
 
-		// We need to translate the message because pressing a key can have a few meanings depending on shift, keyboared language and more.
-		// It returns true if it was translated else false. If we press a key without any other stuff(shift,...) it doesnt translate.
-		TranslateMessage(&msg);
-		// Tells the window to run the message.
-		DispatchMessage(&msg);
+		// If the message is not a message for our modeless dialog.
+		if (handle_to_settings == NULL || !IsDialogMessage(handle_to_settings, &msg)) {
+			// We need to translate the message because pressing a key can have a few meanings depending on shift, keyboared language and more.
+			// It returns true if it was translated else false. If we press a key without any other stuff(shift,...) it doesnt translate.
+			TranslateMessage(&msg);
+			// Tells the window to run the message.
+			DispatchMessage(&msg);
+		}
 	}
 
 	// We return that because wPram gets the number from PostQuitMessage. 
@@ -161,20 +172,86 @@ LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM wParam,
 				}
 
 				// If the New Game was pressed in the menu
-				case ID_FILE_NEW_GAME: 
-					DialogBox(
+				case ID_FILE_NEW_GAME:
+				{
+					INT_PTR ans = DialogBox(
 						GetModuleHandle(NULL),           // We get the hinstance of the current process.
 						MAKEINTRESOURCE(IDD_BASIC_DIALOG), // The ID of the dialog in LWCTSTR.
 						key_of_window,                   // The main window.
 						AboutDialogProc                  // The function that controls the dialog(its lower dowm).
 					);
-					//I havent made any of the game logic yet so for now it does nothing.
-					MessageBox(key_of_window, L"Game Not Created yet", L"ERROR:", MB_OK);// We can use TEXT(""), _T("") or L"".
-					draw_face = TRUE;
-					InvalidateRect(key_of_window, NULL, TRUE);
+
+					// If the start game button was pressed in the dialog box
+					if (ans == ID_START_GAME_BUTTON)
+					{
+						// I havent made any of the game logic yet so for now it does nothing.
+						MessageBox(key_of_window, L"Game Not Created yet", L"ERROR:", MB_OK);// We can use TEXT(""), _T("") or L"".
+						draw_face = TRUE;
+						InvalidateRect(key_of_window, NULL, TRUE);
+						break;
+					}
+
+					// If the cancel button was pressed.
+					else if (ans == ID_CANCEL_DIALOG || ans == IDCANCEL) {
+						break;
+					}
+
+					// If there was an error (ans == -1)
+					else {
+						MessageBox(key_of_window, L"Dialog failed.", L"ERROR", MB_OK | MB_ICONERROR);
+						break;
+					}
+				}
+
+				// If the help was klicked in the setting menu.
+				case ID_SETTINGS_HELP_OPEN:
+				{
+
+					// If it has not been created yet.
+					if (!IsWindow(handle_to_settings)) {
+						handle_to_settings = CreateDialog(
+							GetModuleHandle(NULL),
+							MAKEINTRESOURCE(IDD_MODELESS_DIALOG),
+							key_of_window,
+							SettingsDialogProc // We use a different function because .
+						);
+
+						// If it was created without an error.
+						if (handle_to_settings != NULL) {
+							ShowWindow(handle_to_settings, SW_SHOW);
+						}
+
+						// If there was an error
+						else {
+							MessageBox(key_of_window, L"Failed To Create Modeless Dialog.", L"ERROR", MB_OK | MB_ICONERROR);
+						}
+					}
+
+					// If the window was already created.
+					else {
+						// If we already have the window created
+						SetForegroundWindow(handle_to_settings);
+					}
 					break;
 				}
+				
+				// If the background colour button was pressed in the settings menu.
+				case ID_SETTINGS_BK_COLOUR: {
+					// If it is light blue, which is the last colour we circle back to the first, black.
+					if (bk_colour == LIGHTBLUEBK) {
+						bk_colour = BLACKBK;
+					}
+					// If we are not at the end we go to the next colour.
+					else {
+						bk_colour++;
+					}
+					// We want to call the function to change the background in WM_PAINT.
+					change_background = TRUE;
+					InvalidateRect(key_of_window, NULL, TRUE);
+				}
 			}
+			break;
+		}
 		
 		// Automatically called when we create the window. We can also manualy call.
 		case WM_PAINT:
@@ -185,12 +262,15 @@ LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM wParam,
 			// We get the window ready to be painted.
 			hdc = BeginPaint(key_of_window, &pt);
 
+			// We set the background colour if the flag is true.
+			if (change_background)
+			{
+				SetWindowBackground(hdc, pt);
+				change_background = FALSE;
+			}
+
 			// Prints the words for the window.
 			words_for_window(key_of_window, hdc);
-
-			// Calls the function that draws the rectangle with vertical lines.
-			// SetHatchBrushBackground(hdc, TRUE);
-			// Not used in smiley face.
 
 			if (draw_face) {
 				// We call the function to create the whole smiley face.
@@ -216,6 +296,7 @@ LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM wParam,
 			int width = LOWORD(lParam);
 
 			Resize(key_of_window, (UINT)wParam, width, height);
+			break;
 		}
 
 		// If a key was pressed.
@@ -264,12 +345,14 @@ LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM wParam,
 					return DefWindowProc(key_of_window, code_of_msg, wParam, lParam);
 				}
 			}
+			break;
 		}
 
 		// If the user closes the widnow with the x at the top right.
 		case WM_CLOSE:
 		{
 			DestroyWindow(key_of_window);
+			break;
 		}
 
 		// Automatically called after WM_CLOSE.
@@ -284,7 +367,7 @@ LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM wParam,
 		default: {
 			// Use default for the rest of the codes.
 			return DefWindowProc(key_of_window, code_of_msg, wParam, lParam);
-
+			break;
 		}
 	}
 }
@@ -293,22 +376,72 @@ INT_PTR CALLBACK AboutDialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM 
 	switch (uMsg) {
 		// Called the moment before the dialog appears on screen
 		case WM_INITDIALOG:
+		{
 			return (INT_PTR)TRUE;
+		}
 
 		// Handles buttons clicked inside the dialog
 		case WM_COMMAND:
-			// If they click our OK button, or press the red X (IDCANCEL)
-			if (LOWORD(wParam) == ID_OK_BUTTON) {
-				// This destroys the dialog and unfreezes the main game window
-				EndDialog(hwndDlg, LOWORD(wParam));
-				return (INT_PTR)TRUE;
-			}
-		break;
-	}
+		{
+			switch (LOWORD(wParam)) {
 
-	// Return FALSE if we didn't handle the message
+				// If the start game button was pressed. Equivalent to WM_CREATE for a window. The controls are already created by this point.
+				case  ID_START_GAME_BUTTON: {
+					// This destroys the dialog and unfreezes the main game window. It is needed because a dialog is something we created, like a window.
+					EndDialog(hwndDlg, LOWORD(wParam));
+					return (INT_PTR)TRUE;
+				}
+
+				// If the cancel button was pressed.
+				case ID_CANCEL_DIALOG: {
+					EndDialog(hwndDlg, LOWORD(wParam));
+					return (INT_PTR)TRUE;
+				}
+				
+				// If the x was pressed.
+				case IDCANCEL:
+				{
+					EndDialog(hwndDlg, LOWORD(wParam));
+					return (INT_PTR)TRUE;
+				}
+			}
+			break;
+		}
+
+		default: {
+			// Return FALSE if we didn't handle the message.
+			return (INT_PTR)FALSE;
+		}
+	}
+}
+
+// Function for modeless dialog.
+INT_PTR CALLBACK SettingsDialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+	switch (uMsg) {
+		case WM_INITDIALOG: {
+			return (INT_PTR)TRUE;
+			break;
+		}
+		
+		case WM_COMMAND: {
+			switch (LOWORD(wParam)) {
+				case ID_CANCEL_DIALOG: {
+					// We use destroy DestroyWindow because that is what is used for a task that did not freeze everything else(a normal dialog does).
+					DestroyWindow(hwndDlg);
+					break;
+				}
+				case IDCANCEL:
+				{
+					DestroyWindow(hwndDlg);
+					return (INT_PTR)TRUE;
+				}
+			}
+			break;
+		}
+	}
 	return (INT_PTR)FALSE;
 }
+
 void Resize(HWND hwnd, UINT code_of_message, int width, int height) {
 	// If the window was resized we get here(After we are done resizing).
 	MessageBox(hwnd, L"Resize Dected.", L"Info.", MB_OK);
@@ -367,7 +500,47 @@ void SetHatchBrushBackground(HDC hdc, BOOL transparent) {
 
 void SetWindowBackground(HDC hdc, PAINTSTRUCT pt) {
 	// We use the FillRect function to fill in the rectangle in black. The rectangle is the window in this case.
-	FillRect(hdc, &pt.rcPaint, CreateSolidBrush(RGB(0, 0, 0)));
+	switch (bk_colour) {
+		case BLACKBK: {
+			FillRect(hdc, &pt.rcPaint, CreateSolidBrush(RGB(0, 0, 0)));
+			break;
+		}
+		case REDBK: {
+			FillRect(hdc, &pt.rcPaint, CreateSolidBrush(RGB(255, 0, 0)));
+			break;
+		}
+		case GREENBK: {
+			FillRect(hdc, &pt.rcPaint, CreateSolidBrush(RGB(0, 255, 0)));
+			break;
+		}
+		case BLUEBK: {
+			FillRect(hdc, &pt.rcPaint, CreateSolidBrush(RGB(0, 0, 255)));
+			break;
+		}
+		case WHITEBK: {
+			FillRect(hdc, &pt.rcPaint, CreateSolidBrush(RGB(255, 255, 255)));
+			break;
+		}
+		case LIGHTGREENBK: {
+			FillRect(hdc, &pt.rcPaint, CreateSolidBrush(RGB(144, 238, 144)));
+			break;
+		}
+		case LIGHTBLUEBK: {
+			FillRect(hdc, &pt.rcPaint, CreateSolidBrush(RGB(144, 213, 255)));
+			break;
+		}
+		default: {
+			int ans = MessageBox(GetModuleHandle(NULL), L"Invalid Background Colour.\nSet To Default?", L"ERROR", MB_YESNO | MB_ICONERROR);
+			// Set to defaule, Black
+			if (ans == IDYES) {
+				FillRect(hdc, &pt.rcPaint, CreateSolidBrush(RGB(0, 0, 0)));
+			}
+			// Leave and dont change
+			else {
+				return;
+			}
+		}
+	}
 }
 
 // Function to add main words to the window. If child: "This Is A Child Window." , If its has no parent: "Welcome To My Window.".
