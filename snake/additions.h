@@ -13,7 +13,10 @@
 #define IDI_SNAKE_LOGO 101
 #define IDI_MAIN_SNAKE_LOGO 102
 
-// We define a menu. We chose numbers that dont have an ID on them
+// Cursors.
+#define IDC_SNAKE_CURSOR 150
+
+// We define a menu. We chose numbers that dont have an ID on them.
 #define IDR_MAIN_MENU 200 
 
 // Controls in the menu.
@@ -26,10 +29,10 @@
 // Dialogs
 #define IDD_BASIC_DIALOG 400
 #define ID_START_GAME_BUTTON 401
-#define ID_CANCEL_DIALOG 402 // Also used for modeless.
+#define ID_CANCEL_DIALOG 402 
 
 // Modeless dialogs
 #define IDD_MODELESS_DIALOG 500
 #define ID_HTP_MENU 501
-
+#define ID_HIDE_DIALOG 502
 

@@ -12,11 +12,12 @@ HWND global_cur_win;
 HWND handle_to_settings = NULL;
 
 // The bool to know if we should draw the smiley face in the WM_PAINT.
-static BOOL draw_face = FALSE;
-static BOOL change_background = FALSE;
+BOOL draw_face = FALSE;
+BOOL change_background = FALSE;
 
 // A int to tell the computer the background colour we want.
 UINT bk_colour = BLACKBK;
+UINT cancel_pressed = 0;
 
 LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM key_pressed, LPARAM extra_msg_info);
 INT_PTR CALLBACK AboutDialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam);
@@ -46,8 +47,8 @@ int WINAPI wWinMain(HINSTANCE handle_of_instance, HINSTANCE not_needed, PWSTR co
 	// We load the icon i created. We use MAKEINTRESOURCE to convert from int to lpcstr
 	window_blueprint.hIcon = LoadIcon(handle_of_instance, MAKEINTRESOURCE(IDI_MAIN_SNAKE_LOGO));
 
-	// IDC is the ID for the Cursor and ARROW is the standered one(UPARROW is also used).
-	window_blueprint.hCursor = LoadCursor(NULL, IDC_ARROW);
+	// We load the cursor that we put in(its a snake it looks funny).
+	window_blueprint.hCursor = LoadCursor(handle_of_instance, MAKEINTRESOURCE(IDC_SNAKE_CURSOR));
 
 	// We set the background to black. For the default (HBRUSH)(COLOR_WINDOW + 1).
 	window_blueprint.hbrBackground = CreateSolidBrush(RGB(0, 0, 0));
@@ -184,6 +185,8 @@ LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM wParam,
 					// If the start game button was pressed in the dialog box
 					if (ans == ID_START_GAME_BUTTON)
 					{
+						// We have started a game since last cancel.
+						cancel_pressed = 0;
 						// I havent made any of the game logic yet so for now it does nothing.
 						MessageBox(key_of_window, L"Game Not Created yet", L"ERROR:", MB_OK);// We can use TEXT(""), _T("") or L"".
 						draw_face = TRUE;
@@ -193,6 +196,8 @@ LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM wParam,
 
 					// If the cancel button was pressed.
 					else if (ans == ID_CANCEL_DIALOG || ans == IDCANCEL) {
+						// We add one to the amount of canceld pressed. We cant change the text here because the dialog is about to be destroyed so it wont save text changes.
+						cancel_pressed++;
 						break;
 					}
 
@@ -213,25 +218,38 @@ LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM wParam,
 							GetModuleHandle(NULL),
 							MAKEINTRESOURCE(IDD_MODELESS_DIALOG),
 							key_of_window,
-							SettingsDialogProc // We use a different function because .
+							SettingsDialogProc // We use a different function because we need to handle the case differently when we use a modeless diaglog.
 						);
 
 						// If it was created without an error.
 						if (handle_to_settings != NULL) {
+							// We pop up the dialog. (SW_SHOW a mode)
 							ShowWindow(handle_to_settings, SW_SHOW);
 						}
 
-						// If there was an error
+						// If there was an error.
 						else {
 							MessageBox(key_of_window, L"Failed To Create Modeless Dialog.", L"ERROR", MB_OK | MB_ICONERROR);
 						}
 					}
 
-					// If the window was already created.
-					else {
-						// If we already have the window created
-						SetForegroundWindow(handle_to_settings);
+					// If the dialog is hidden.
+					else if(!IsWindowVisible(handle_to_settings)){
+						// We bring the dialog back into view.
+						ShowWindow(handle_to_settings, SW_SHOW);
 					}
+
+					// If it is visable.
+					else {
+						// We hide the window.
+						ShowWindow(handle_to_settings, SW_HIDE);
+
+						// If it is stile set to SW_HIDE or it got closed.
+						if (IsWindowVisible(handle_to_settings) || !IsWindow(handle_to_settings)) {
+							MessageBox(handle_to_settings, L"Failed To Hide Window", L"ERROR", MB_OK | MB_ICONERROR);
+						}
+					}
+
 					break;
 				}
 				
@@ -377,6 +395,14 @@ INT_PTR CALLBACK AboutDialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM 
 		// Called the moment before the dialog appears on screen
 		case WM_INITDIALOG:
 		{
+			// If the cancel was pressed we 
+			if (cancel_pressed != 0) {
+				WCHAR final_text[32];
+				// We add the number to the end of the final text. We use %u because cancel_pressed is a UINT.
+				swprintf_s(final_text, 32, L"Cancel: %u", cancel_pressed);
+				// We set the new dialogs text in the cancel box to "Cancel: x". x is the amount of cancels since last game.
+				SetDlgItemText(hwndDlg, ID_CANCEL_DIALOG, final_text);
+			}
 			return (INT_PTR)TRUE;
 		}
 
@@ -387,8 +413,31 @@ INT_PTR CALLBACK AboutDialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM 
 
 				// If the start game button was pressed. Equivalent to WM_CREATE for a window. The controls are already created by this point.
 				case  ID_START_GAME_BUTTON: {
-					// This destroys the dialog and unfreezes the main game window. It is needed because a dialog is something we created, like a window.
-					EndDialog(hwndDlg, LOWORD(wParam));
+					// We get the length of the text in the cancel button in the dialog. Doesnt include null terminator.
+					int len = GetWindowTextLength(GetDlgItem(hwndDlg, ID_CANCEL_DIALOG));
+					if (len > 0) {
+						// We create the buffer. We use len+1 becasue we have to include the null terminator.
+						LPWSTR buffer = (LPWSTR)calloc(len + 1, sizeof(wchar_t));
+						// We get the actual text. It returns an int value for the amount of data we read not including the null terminator.
+						GetDlgItemText(hwndDlg, ID_CANCEL_DIALOG, buffer, len + 1);
+
+						// We clode the dialog
+						EndDialog(hwndDlg, LOWORD(wParam));
+
+						if (len == 7) {
+							MessageBox(NULL, L"No Cancels", L"Cancels", MB_OK | MB_ICONINFORMATION);
+						}
+						else 
+						{
+							MessageBox(NULL, buffer, L"Cancels", MB_OK | MB_ICONINFORMATION);
+						}
+						free(buffer);
+					}
+
+					else {
+						// This destroys the dialog and unfreezes the main game window. It is needed because a dialog is something we created, like a window.
+						EndDialog(hwndDlg, LOWORD(wParam));
+					}					
 					return (INT_PTR)TRUE;
 				}
 
@@ -425,16 +474,37 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPAR
 		
 		case WM_COMMAND: {
 			switch (LOWORD(wParam)) {
-				case ID_CANCEL_DIALOG: {
-					// We use destroy DestroyWindow because that is what is used for a task that did not freeze everything else(a normal dialog does).
-					DestroyWindow(hwndDlg);
+				// If the hide button was pressed
+				case ID_HIDE_DIALOG: {
+					// We hide the dialog(still open just not in view.
+					ShowWindow(hwndDlg, SW_HIDE);
+
+					// If it is stile set to SW_HIDE or it got closed.
+					if (IsWindowVisible(handle_to_settings) || !IsWindow(handle_to_settings)) {
+						MessageBox(handle_to_settings, L"Failed To Hide Window", L"ERROR", MB_OK | MB_ICONERROR);
+					}
+					return (INT_PTR)TRUE;
 					break;
 				}
+
+				// If the x at the top was pressed.
 				case IDCANCEL:
 				{
+					// We use destroy DestroyWindow because that is what is used for a task that did not freeze everything else(a normal dialog does).
 					DestroyWindow(hwndDlg);
 					return (INT_PTR)TRUE;
+					break;
 				}
+			}
+			break;
+		}
+
+		// If we use a system command.
+		case WM_SYSCOMMAND: {
+			// If we try to move the dialog.
+			if ((wParam & 0xFFF0) == SC_MOVE) {// We only look at the first 16 digs because SC is 16 bits
+				// We dont move it because we want ot lock it in place.
+				return (INT_PTR)TRUE;
 			}
 			break;
 		}
@@ -498,6 +568,7 @@ void SetHatchBrushBackground(HDC hdc, BOOL transparent) {
 	DeleteObject(hHatchBrush);
 }
 
+// Function to set the colour of the background. 
 void SetWindowBackground(HDC hdc, PAINTSTRUCT pt) {
 	// We use the FillRect function to fill in the rectangle in black. The rectangle is the window in this case.
 	switch (bk_colour) {

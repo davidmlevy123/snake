@@ -5,6 +5,10 @@
 IDI_SNAKE_LOGO ICON "snake_icon.ico"
 IDI_MAIN_SNAKE_LOGO ICON "main_snake_icon.ico"
 
+// Assosiate the number to the file.
+IDC_SNAKE_CURSOR CURSOR "cobra.cur"
+
+
 // The menu's code.
 IDR_MAIN_MENU MENU 
 BEGIN 
@@ -27,6 +31,7 @@ BEGIN
 		MENUITEM "&Report A Bug", ID_SETTINGS_BUG
 	END
 END
+
 
 // Dailogs code.
 IDD_BASIC_DIALOG DIALOGEX 0, 0, 160, 80// Coordinates, width and height.
@@ -55,11 +60,12 @@ END
 
 // Modeless dialog
 IDD_MODELESS_DIALOG DIALOGEX 0, 0, 160 ,80
-STYLE WS_POPUP | WS_CAPTION | DS_MODALFRAME | DS_CENTER
+STYLE WS_POPUP | WS_CAPTION | DS_MODALFRAME | DS_CENTER | WS_SYSMENU
 EXSTYLE WS_EX_TOOLWINDOW 
 CAPTION "Settings"
 FONT 12, "David"
 BEGIN 
 	DEFPUSHBUTTON "&How To Play", ID_HTP_MENU, 45, 20, 70, 16
-	PUSHBUTTON "&Cancel" , ID_CANCEL_DIALOG, 45, 45, 70, 16
+	PUSHBUTTON "&Hide" , ID_HIDE_DIALOG, 45, 45, 70, 16
+	GROUPBOX "Options", -1, 7, 7, 146, 63
 END
