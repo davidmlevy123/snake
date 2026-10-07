@@ -5,6 +5,26 @@
 const wchar_t class_name[] = L"Main Window.";
 const wchar_t window_name[] = L"Snake.";
 
+// Create a struck that has the snake. It is a global struct
+typedef struct
+{
+	// We creata an array of points that has a length of 3(we will have the snake size at 3 for now).
+	POINT snake[3];
+	UINT length;
+	UINT cur_direction; // The current direction is UP=0,RIGHT=1,DOWN=2,LEFT=3.
+}Snake;
+// We create our actual snake, in c we cant give default values so we need to give the values when we define it.
+Snake my_snake = {.length = 3 , .cur_direction = UP};
+void set_snake_start_points(){
+	for (int i = 0; i < my_snake.length; ++i) {
+		my_snake.snake[i].x = i + 3;
+		my_snake.snake[i].y = 5;
+	}
+}
+
+// A bool to check if the game has started yet.
+BOOL game_started = FALSE;
+
 // We have a global hInstance so we can use it in the function and not just main.
 HINSTANCE global_hInstance;
 HWND global_cur_win;
@@ -19,13 +39,16 @@ BOOL change_background = FALSE;
 UINT bk_colour = BLACKBK;
 UINT cancel_pressed = 0;
 
+// Ints for timers
+UINT_PTR timer_1 = 0;
+
 LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM key_pressed, LPARAM extra_msg_info);
 INT_PTR CALLBACK AboutDialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam);
 INT_PTR CALLBACK SettingsDialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
 void Resize(HWND hwnd, UINT code_of_message, int width, int height);
 void SetHatchBrushBackground(HDC hdc, BOOL transparent);
-void SetWindowBackground(HDC hdc, PAINTSTRUCT pt);
+void SetWindowBackground(HDC hdc, PAINTSTRUCT pt, INT n); // n is an option to chose the bk colour, -1 means continue loop.
 void words_for_window(HWND hwnd, HDC hdc);
 void Eyes(HDC hdc);
 void Head(HDC hdc);
@@ -134,8 +157,8 @@ int WINAPI wWinMain(HINSTANCE handle_of_instance, HINSTANCE not_needed, PWSTR co
 	MSG msg;
 	// BOOL for the value of the message. As long as its not 0 or -1 we don't care what it is
 	BOOL get_message_val;
-	// While the value is not 0. If its 0 than we got a termination message so we stop getting messages.
 
+	// While the value is not 0. If its 0 than we got a termination message so we stop getting messages.
 	while ((get_message_val = GetMessage(&msg, NULL, 0, 0)) != 0)
 	{
 		// If the message is -1 that means that the hWnd is invalid so we give an error.
@@ -185,11 +208,19 @@ LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM wParam,
 					// If the start game button was pressed in the dialog box
 					if (ans == ID_START_GAME_BUTTON)
 					{
-						// We have started a game since last cancel.
-						cancel_pressed = 0;
-						// I havent made any of the game logic yet so for now it does nothing.
-						MessageBox(key_of_window, L"Game Not Created yet", L"ERROR:", MB_OK);// We can use TEXT(""), _T("") or L"".
-						draw_face = TRUE;
+						//// We have started a game since last cancel.
+						//cancel_pressed = 0;
+						//// I havent made any of the game logic yet so for now it does nothing.
+						//MessageBox(key_of_window, L"Game Not Created yet", L"ERROR:", MB_OK);// We can use TEXT(""), _T("") or L"".
+						//draw_face = TRUE;
+
+						// we set the flag that says the game has started to true.
+						game_started = TRUE;
+
+						// Setting timer to move the snake.
+						timer_1 = SetTimer(key_of_window, IDT_TIMER1, 100, NULL);
+						set_snake_start_points();
+
 						InvalidateRect(key_of_window, NULL, TRUE);
 						break;
 					}
@@ -283,7 +314,7 @@ LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM wParam,
 			// We set the background colour if the flag is true.
 			if (change_background)
 			{
-				SetWindowBackground(hdc, pt);
+				SetWindowBackground(hdc, pt, -1);
 				change_background = FALSE;
 			}
 
@@ -300,6 +331,19 @@ LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM wParam,
 				InvalidateRect(key_of_window, NULL, TRUE);
 			}
 
+			if (game_started) {
+				SetWindowBackground(hdc, pt, BLACKBK);
+				HBRUSH green = CreateSolidBrush(RGB(0, 255, 0));
+				for (int i = 0; i < my_snake.length; ++i) {
+					RECT block;
+					block.left = my_snake.snake[i].x * CELL_SIZE;
+					block.top = my_snake.snake[i].y * CELL_SIZE;
+					block.right = block.left + CELL_SIZE;
+					block.bottom = block.top + CELL_SIZE;
+					FillRect(hdc, &block, green);
+				}
+				DeleteObject(green);
+			}
 			// We must end the painting.
 			EndPaint(key_of_window, &pt);
 			break;
@@ -331,12 +375,13 @@ LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM wParam,
 					else {
 						return 0;
 					}
+					break;
 				}
 
 				// If the key is 'P'(the spot of P on the keyboard). 
 				case  'P': {
-					// We create a pointer to the file path we make it the max size a path can be(260).
-					LPWSTR path[MAX_PATH];
+					// We create a char* of file path we make it the max size a path can be(260).
+					WCHAR path[MAX_PATH];
 					// We call the function to get the file name. The name goes into the path and we send MAX_PATH as the size of it. We use the GetModuleHandle function to get the HINSTANCE to tell the program which .exe file we want the path 2. We send NULL so we get the current files HINSTANCE.
 					GetModuleFileName(GetModuleHandle(NULL), path, MAX_PATH);
 					// We create the new message the size of MAX_PATH+32 because the length of the addition is 14, but its better to put a power of 2.
@@ -356,6 +401,7 @@ LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM wParam,
 					else {
 						DestroyWindow(key_of_window);
 					}
+					break;
 				}
 
 				default: {
@@ -376,10 +422,110 @@ LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM wParam,
 		// Automatically called after WM_CLOSE.
 		case WM_DESTROY:
 		{
+			// We need to kill the timer before we end the code so it doesnt continue going off.
+			KillTimer(key_of_window, IDT_TIMER1);
 			// If the case is to leave we end the program and window. We need the PostQuitMessage becasue if we dont have it the function will return 0 without closing the window.
 			PostQuitMessage(0);
 			return 0;
 		}
+
+		// If we have a timer go off.
+		case WM_TIMER: {
+			switch (wParam) {
+				// The timer for moving the snake went off.
+				case IDT_TIMER1:{
+					// We move each part of the snake from tail to the spot infront of it(exept the head).
+					for (int i = my_snake.length - 1; i > 0; --i) {
+						my_snake.snake[i] = my_snake.snake[i - 1];
+					}
+					switch (my_snake.cur_direction) {
+						case UP: {
+							// If we made it to the top of the screen.
+							if (my_snake.snake[0].y <= 0) {
+								// If we are at the right edge.
+								if (my_snake.snake[0].x >= GRID_W - 1) {
+									my_snake.cur_direction = LEFT;
+									my_snake.snake[0].x--;
+								}
+								else {
+									my_snake.cur_direction = RIGHT;
+									my_snake.snake[0].x++;
+								}
+							}
+							// If we had  a valid spot.
+							else {
+								// We do y-- because y=0 is the top (y grows downwards).
+								my_snake.snake[0].y--;
+							}
+							break;
+						}
+						case DOWN: {
+							// Same logic just for bottom and not top
+							if (my_snake.snake[0].y >= GRID_H - 1) {
+								if (my_snake.snake[0].x >= GRID_W - 1) {
+									my_snake.cur_direction = LEFT;
+									my_snake.snake[0].x--;
+								}
+								else {
+									my_snake.cur_direction = RIGHT;
+									my_snake.snake[0].x++;
+								}
+							}
+							else
+							{
+								my_snake.snake[0].y++;
+							}
+							break;
+						}
+						case RIGHT: {
+							// If we make it to right barier we go up.
+							if (my_snake.snake[0].x >= GRID_W - 1) {
+								if (my_snake.snake[0].y <= 0) {
+									my_snake.cur_direction = DOWN;
+									my_snake.snake[0].y++;
+								}
+								else {
+									my_snake.cur_direction = UP;
+									my_snake.snake[0].y--;
+								}
+							}
+							else 
+							{
+								my_snake.snake[0].x++;
+							}
+							break;
+						}
+						case LEFT: {
+							if (my_snake.snake[0].x <= 0) {
+								if (my_snake.snake[0].y <= 0) {
+									my_snake.cur_direction = DOWN;
+									my_snake.snake[0].y++;
+								}
+								else {
+									my_snake.cur_direction = UP;
+									my_snake.snake[0].y--;
+								}
+							}
+							else
+							{
+								my_snake.snake[0].x--;
+							}
+							break;
+						}
+						default: {
+							// If the dirction was bad we set it to UP.
+							my_snake.cur_direction = UP;
+						}// default
+					}// switch (my_snake.cur_direction)
+					InvalidateRect(key_of_window, NULL, TRUE);
+					break;
+				}// case IDT_TIMER1
+				default: {
+					
+				}
+			} // switch(wPram)
+			break;
+		} // Case WM_TIMER
 
 		// Any other case.
 		default: {
@@ -388,6 +534,7 @@ LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM wParam,
 			break;
 		}
 	}
+	return 0;
 }
 
 INT_PTR CALLBACK AboutDialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam) {
@@ -569,42 +716,79 @@ void SetHatchBrushBackground(HDC hdc, BOOL transparent) {
 }
 
 // Function to set the colour of the background. 
-void SetWindowBackground(HDC hdc, PAINTSTRUCT pt) {
+void SetWindowBackground(HDC hdc, PAINTSTRUCT pt, INT n) {
 	// We use the FillRect function to fill in the rectangle in black. The rectangle is the window in this case.
+	int save_bk_colour = bk_colour;
+	// If we got a specified value we use it.
+	if (n != -1) {
+		bk_colour = n;
+	}
 	switch (bk_colour) {
 		case BLACKBK: {
-			FillRect(hdc, &pt.rcPaint, CreateSolidBrush(RGB(0, 0, 0)));
+			HBRUSH colour = CreateSolidBrush(RGB(0, 0, 0));
+			HBRUSH default_brush = (HBRUSH)SelectObject(hdc, colour);
+			FillRect(hdc, &pt.rcPaint, colour);
+			SelectObject(hdc, default_brush);
+			DeleteObject(colour);
 			break;
 		}
 		case REDBK: {
-			FillRect(hdc, &pt.rcPaint, CreateSolidBrush(RGB(255, 0, 0)));
+			HBRUSH colour = CreateSolidBrush(RGB(255, 0, 0));
+			HBRUSH default_brush = (HBRUSH)SelectObject(hdc, colour);
+			FillRect(hdc, &pt.rcPaint, colour);
+			SelectObject(hdc, default_brush);
+			DeleteObject(colour);
 			break;
 		}
 		case GREENBK: {
-			FillRect(hdc, &pt.rcPaint, CreateSolidBrush(RGB(0, 255, 0)));
+			HBRUSH colour = CreateSolidBrush(RGB(0, 255, 0));
+			HBRUSH default_brush = (HBRUSH)SelectObject(hdc, colour);
+			FillRect(hdc, &pt.rcPaint, colour);
+			SelectObject(hdc, default_brush);
+			DeleteObject(colour);
 			break;
 		}
 		case BLUEBK: {
-			FillRect(hdc, &pt.rcPaint, CreateSolidBrush(RGB(0, 0, 255)));
+			HBRUSH colour = CreateSolidBrush(RGB(0, 0, 255));
+			HBRUSH default_brush = (HBRUSH)SelectObject(hdc, colour);
+			FillRect(hdc, &pt.rcPaint, colour);
+			SelectObject(hdc, default_brush);
+			DeleteObject(colour);
 			break;
 		}
 		case WHITEBK: {
-			FillRect(hdc, &pt.rcPaint, CreateSolidBrush(RGB(255, 255, 255)));
+			HBRUSH colour = CreateSolidBrush(RGB(255, 255, 255));
+			HBRUSH default_brush = (HBRUSH)SelectObject(hdc, colour);
+			FillRect(hdc, &pt.rcPaint, colour);
+			SelectObject(hdc, default_brush);
+			DeleteObject(colour);
 			break;
 		}
 		case LIGHTGREENBK: {
-			FillRect(hdc, &pt.rcPaint, CreateSolidBrush(RGB(144, 238, 144)));
+			HBRUSH colour = CreateSolidBrush(RGB(144, 238, 144));
+			HBRUSH default_brush = (HBRUSH)SelectObject(hdc, colour);
+			FillRect(hdc, &pt.rcPaint, colour);
+			SelectObject(hdc, default_brush);
+			DeleteObject(colour);
 			break;
 		}
 		case LIGHTBLUEBK: {
-			FillRect(hdc, &pt.rcPaint, CreateSolidBrush(RGB(144, 213, 255)));
+			HBRUSH colour = CreateSolidBrush(RGB(144, 213, 255));
+			HBRUSH default_brush = (HBRUSH)SelectObject(hdc, colour);
+			FillRect(hdc, &pt.rcPaint, colour);
+			SelectObject(hdc, default_brush);
+			DeleteObject(colour);
 			break;
 		}
 		default: {
 			int ans = MessageBox(GetModuleHandle(NULL), L"Invalid Background Colour.\nSet To Default?", L"ERROR", MB_YESNO | MB_ICONERROR);
 			// Set to defaule, Black
 			if (ans == IDYES) {
-				FillRect(hdc, &pt.rcPaint, CreateSolidBrush(RGB(0, 0, 0)));
+				HBRUSH colour = CreateSolidBrush(RGB(0, 0, 0));
+				HBRUSH default_brush = (HBRUSH)SelectObject(hdc, colour);
+				FillRect(hdc, &pt.rcPaint, colour);
+				SelectObject(hdc, default_brush);
+				DeleteObject(colour);
 			}
 			// Leave and dont change
 			else {
@@ -612,6 +796,8 @@ void SetWindowBackground(HDC hdc, PAINTSTRUCT pt) {
 			}
 		}
 	}
+	// If we ended up using n we want to go back to the samne spot in cycle.
+	bk_colour = save_bk_colour;
 }
 
 // Function to add main words to the window. If child: "This Is A Child Window." , If its has no parent: "Welcome To My Window.".
@@ -698,3 +884,4 @@ void smiley_face(HDC hdc) {
 	Eyes(hdc);
 	Mouth(hdc);
 }
+

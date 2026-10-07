@@ -1,5 +1,7 @@
 #pragma once
 
+// All of these are instead of using ENUM.
+
 // Colours
 #define BLACKBK 0
 #define REDBK 1
@@ -36,3 +38,16 @@
 #define ID_HTP_MENU 501
 #define ID_HIDE_DIALOG 502
 
+// Directions 
+#define UP 0
+#define RIGHT 1
+#define DOWN 2
+#define LEFT 3
+
+// Timers
+#define IDT_TIMER1 1000
+
+// Grid dimentions for game.
+#define GRID_W 30
+#define GRID_H 20
+#define CELL_SIZE 25
