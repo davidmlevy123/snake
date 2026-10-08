@@ -14,7 +14,7 @@ typedef struct
 	UINT cur_direction; // The current direction is UP=0,RIGHT=1,DOWN=2,LEFT=3.
 }Snake;
 // We create our actual snake, in c we cant give default values so we need to give the values when we define it.
-Snake my_snake = {.length = 3 , .cur_direction = UP};
+Snake my_snake = {.length = 3 , .cur_direction = RIGHT};
 void set_snake_start_points(){
 	for (int i = 0; i < my_snake.length; ++i) {
 		my_snake.snake[i].x = i + 3;
@@ -33,7 +33,6 @@ HWND handle_to_settings = NULL;
 
 // The bool to know if we should draw the smiley face in the WM_PAINT.
 BOOL draw_face = FALSE;
-BOOL change_background = FALSE;
 
 // A int to tell the computer the background colour we want.
 UINT bk_colour = BLACKBK;
@@ -295,7 +294,6 @@ LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM wParam,
 						bk_colour++;
 					}
 					// We want to call the function to change the background in WM_PAINT.
-					change_background = TRUE;
 					InvalidateRect(key_of_window, NULL, TRUE);
 				}
 			}
@@ -312,11 +310,7 @@ LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM wParam,
 			hdc = BeginPaint(key_of_window, &pt);
 
 			// We set the background colour if the flag is true.
-			if (change_background)
-			{
-				SetWindowBackground(hdc, pt, -1);
-				change_background = FALSE;
-			}
+			SetWindowBackground(hdc, pt, -1);
 
 			// Prints the words for the window.
 			words_for_window(key_of_window, hdc);
@@ -331,33 +325,83 @@ LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM wParam,
 				InvalidateRect(key_of_window, NULL, TRUE);
 			}
 
+			// If the used dicided to start the game.
 			if (game_started) {
-				SetWindowBackground(hdc, pt, BLACKBK);
-				HBRUSH green = CreateSolidBrush(RGB(0, 255, 0));
-				for (int i = 0; i < my_snake.length; ++i) {
-					RECT block;
-					block.left = my_snake.snake[i].x * CELL_SIZE;
-					block.top = my_snake.snake[i].y * CELL_SIZE;
-					block.right = block.left + CELL_SIZE;
-					block.bottom = block.top + CELL_SIZE;
-					FillRect(hdc, &block, green);
+				
+				// We get the game dimentions.
+				RECT screen_size;
+				GetClientRect(key_of_window, &screen_size);
+				int cell_w = screen_size.right / GRID_W;
+				int cell_h = screen_size.bottom / GRID_H;
+				int cell_size;
+				if (cell_w > cell_h) {
+					cell_size = cell_h;
 				}
-				DeleteObject(green);
+				else {
+					cell_size = cell_w;
+				}
+
+				// Setting an outline for the game area.
+				if (bk_colour == BLACKBK) {
+					HBRUSH white_outline = CreateSolidBrush(RGB(255, 255, 255));
+					RECT rect = { .right = GRID_W * cell_size,.left = 0,.bottom = GRID_H * cell_size,.top = 0 };
+					FrameRect(hdc, &rect, white_outline);
+					DeleteObject(white_outline);
+				}
+				else {
+					HBRUSH black_outline = CreateSolidBrush(RGB(0, 0, 0));
+					RECT rect = { .right = GRID_W * cell_size,.left = 0,.bottom = GRID_H * cell_size,.top = 0 };
+					FrameRect(hdc, &rect, black_outline);
+					DeleteObject(black_outline);
+				}
+
+				// Creating the snake and giving him a colour.
+				if (bk_colour == GREENBK || bk_colour == LIGHTGREENBK) {
+					HBRUSH black = CreateSolidBrush(RGB(0, 0, 0));
+					for (int i = 0; i < my_snake.length; ++i) {
+						RECT block;
+						block.left = my_snake.snake[i].x * cell_size;
+						block.top = my_snake.snake[i].y * cell_size;
+						block.right = block.left + cell_size;
+						block.bottom = block.top + cell_size;
+						FillRect(hdc, &block, black);
+					}
+					DeleteObject(black);
+				}
+				else {
+					HBRUSH green = CreateSolidBrush(RGB(0, 255, 0));
+					for (int i = 0; i < my_snake.length; ++i) {
+						RECT block;
+						block.left = my_snake.snake[i].x * cell_size;
+						block.top = my_snake.snake[i].y * cell_size;
+						block.right = block.left + cell_size;
+						block.bottom = block.top + cell_size;
+						FillRect(hdc, &block, green);
+					}
+					DeleteObject(green);
+				}
 			}
+
 			// We must end the painting.
 			EndPaint(key_of_window, &pt);
 			break;
 		}
 
+		// Called whenever we get a fillrect with the change background as true.
+		case WM_ERASEBKGND: {
+			// We tell it that we will deal with the background changing.
+			return 1;
+		}
+
 		// If the user is done resizing.
-		case WM_EXITSIZEMOVE:
+		case WM_SIZE:
 		{
 			// In this case wParam is the flag that indicates if the window is minimized maximized or normal.
 			// The lParam has the new height and width in it. The first 16 bits are the hieght and the last 16 are width.
 			int height = HIWORD(lParam);
 			int width = LOWORD(lParam);
 
-			Resize(key_of_window, (UINT)wParam, width, height);
+			InvalidateRect(key_of_window, NULL, TRUE);
 			break;
 		}
 
@@ -560,31 +604,31 @@ INT_PTR CALLBACK AboutDialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM 
 
 				// If the start game button was pressed. Equivalent to WM_CREATE for a window. The controls are already created by this point.
 				case  ID_START_GAME_BUTTON: {
-					// We get the length of the text in the cancel button in the dialog. Doesnt include null terminator.
-					int len = GetWindowTextLength(GetDlgItem(hwndDlg, ID_CANCEL_DIALOG));
-					if (len > 0) {
-						// We create the buffer. We use len+1 becasue we have to include the null terminator.
-						LPWSTR buffer = (LPWSTR)calloc(len + 1, sizeof(wchar_t));
-						// We get the actual text. It returns an int value for the amount of data we read not including the null terminator.
-						GetDlgItemText(hwndDlg, ID_CANCEL_DIALOG, buffer, len + 1);
+					//// We get the length of the text in the cancel button in the dialog. Doesnt include null terminator.
+					//int len = GetWindowTextLength(GetDlgItem(hwndDlg, ID_CANCEL_DIALOG));
+					//if (len > 0) {
+					//	// We create the buffer. We use len+1 becasue we have to include the null terminator.
+					//	LPWSTR buffer = (LPWSTR)calloc(len + 1, sizeof(wchar_t));
+					//	// We get the actual text. It returns an int value for the amount of data we read not including the null terminator.
+					//	GetDlgItemText(hwndDlg, ID_CANCEL_DIALOG, buffer, len + 1);
 
-						// We clode the dialog
-						EndDialog(hwndDlg, LOWORD(wParam));
+					//	// We clode the dialog
+					//	EndDialog(hwndDlg, LOWORD(wParam));
 
-						if (len == 7) {
-							MessageBox(NULL, L"No Cancels", L"Cancels", MB_OK | MB_ICONINFORMATION);
-						}
-						else 
-						{
-							MessageBox(NULL, buffer, L"Cancels", MB_OK | MB_ICONINFORMATION);
-						}
-						free(buffer);
-					}
+					//	if (len == 7) {
+					//		MessageBox(NULL, L"No Cancels", L"Cancels", MB_OK | MB_ICONINFORMATION);
+					//	}
+					//	else 
+					//	{
+					//		MessageBox(NULL, buffer, L"Cancels", MB_OK | MB_ICONINFORMATION);
+					//	}
+					//	free(buffer);
+					//}
 
-					else {
-						// This destroys the dialog and unfreezes the main game window. It is needed because a dialog is something we created, like a window.
-						EndDialog(hwndDlg, LOWORD(wParam));
-					}					
+					//else {
+					// This destroys the dialog and unfreezes the main game window. It is needed because a dialog is something we created, like a window.
+					EndDialog(hwndDlg, LOWORD(wParam));
+					//}					
 					return (INT_PTR)TRUE;
 				}
 
@@ -657,13 +701,6 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPAR
 		}
 	}
 	return (INT_PTR)FALSE;
-}
-
-void Resize(HWND hwnd, UINT code_of_message, int width, int height) {
-	// If the window was resized we get here(After we are done resizing).
-	MessageBox(hwnd, L"Resize Dected.", L"Info.", MB_OK);
-	// Direct call to paint. We send NULL because we have no specific spot to repaint. We semd true because we want to repaint the background.
-	InvalidateRect(hwnd, NULL, TRUE);
 }
 
 void SetHatchBrushBackground(HDC hdc, BOOL transparent) {
@@ -816,8 +853,10 @@ void words_for_window(HWND hwnd, HDC hdc) {
 		TCHAR text[] = L"Welcome To My Window.";
 		SetBkColor(hdc, RGB(255, 255, 255));
 		SetTextColor(hdc, RGB(0, 255, 0));
-		// We print the text with our colours. 
-		TextOut(hdc, 5, 5, text, _tcslen(text));
+		if (!game_started) {
+			// We print the text with our colours. We do that only if we havent started the game so we dont block the game with the words. 
+			TextOut(hdc, 5, 5, text, _tcslen(text));
+		}
 	}
 }
 

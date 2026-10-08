@@ -50,4 +50,3 @@
 // Grid dimentions for game.
 #define GRID_W 30
 #define GRID_H 20
-#define CELL_SIZE 25
