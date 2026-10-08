@@ -7,8 +7,7 @@ const wchar_t class_name[] = L"Main Window.";
 const wchar_t window_name[] = L"Snake.";
 
 // Create a struck that has the snake. It is a global struct
-typedef struct
-{
+typedef struct {
 	// We creata an queue of points that has a length of 3(we will have the snake size at 3 for now).
 	queue snake;
 	UINT length;
@@ -37,6 +36,13 @@ static void set_button_queue() {
 	buttons_pressed = create_queue(NULL, sizeof(int), 3, 0, 0);
 }
 
+typedef struct {
+	POINT apple;
+	BOOL apple_draw;
+}Apple;
+// We create an apple and we dont start by drawing.
+Apple apple = { .apple_draw = FALSE };
+
 // A bool to check if the game has started yet.
 BOOL game_started = FALSE;
 
@@ -53,9 +59,8 @@ BOOL draw_face = FALSE;
 UINT bk_colour = BLACKBK;
 UINT cancel_pressed = 0;
 
-// Ints for timers
-UINT_PTR timer_1 = 0;
-UINT_PTR timer_for_apple = 0;
+// A int that holds the state of our random numbers.
+static unsigned int random_seed = 1;
 
 static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM key_pressed, LPARAM extra_msg_info);
 static INT_PTR CALLBACK AboutDialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam);
@@ -70,7 +75,9 @@ static void Mouth(HDC hdc);
 static void smiley_face(HDC hdc);
 static BOOL is_valid_turn(UINT new_direction, const Snake* s);
 static void queue_direction_if_valid(UINT new_direction);
-
+static void set_up_rand();
+static int full_range_ran();
+static int my_rand(int a, int b); // Gets a random number in between a and b.
 
 int WINAPI wWinMain(HINSTANCE handle_of_instance, HINSTANCE not_needed, PWSTR command_line, int flag_min_max_normal) {//PWSTR=wchar_t*.
 	global_hInstance = handle_of_instance;
@@ -235,8 +242,9 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 						game_started = TRUE;
 
 						// Setting timer to move the snake.
-						timer_1 = SetTimer(key_of_window, IDT_TIMER1, 100, NULL);
-						timer_for_apple = SetTimer(key_of_window, IDT_TIMER_FOR_APPLE, NULL);
+						SetTimer(key_of_window, IDT_TIMER1, 100, NULL);
+						// Wegive the apple a random amount of time to spawn in. We make teh timer again in WM_TIMER becasuse we want a new random number for each apple.
+						SetTimer(key_of_window, IDT_TIMER_FOR_APPLE, my_rand(1000, 5000), NULL);
 						set_snake_start_points();
 						// Get the queue of the buttons pressed that need to be executed ready.
 						set_button_queue();
@@ -400,6 +408,29 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 					}
 					DeleteObject(green);
 				}
+
+				// Drawing apple if flag is TRUE
+				if (apple.apple_draw) {
+					RECT to_fill;
+					// We put the apple at the random spots we got and make it 1 cell by 1 cell
+					to_fill.left = apple.apple.x * cell_size;
+					to_fill.right = to_fill.left + cell_size;
+					to_fill.top = apple.apple.y * cell_size;
+					to_fill.bottom = to_fill.top + cell_size;
+
+					// If the background is red we donr want to make a red apple
+					if (bk_colour == REDBK) {
+						HBRUSH green = CreateSolidBrush(RGB(0, 255, 0));
+						FillRect(hdc, &to_fill, green);
+						DeleteObject(green);
+					}
+					else {
+						HBRUSH red = CreateSolidBrush(RGB(255, 0, 0));
+						FillRect(hdc, &to_fill, red);
+						DeleteObject(red);
+					}
+				}
+				
 			}
 
 			// We must end the painting.
@@ -523,7 +554,7 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 		case WM_TIMER: {
 			switch (wParam) {
 				// The timer for moving the snake went off.
-				case IDT_TIMER1:{
+				case IDT_TIMER1: {
 
 					// We set the snake to move in next direction.
 					int next_direction = my_snake.cur_direction;
@@ -626,18 +657,28 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 					InvalidateRect(key_of_window, NULL, TRUE);
 					break;
 				}// case IDT_TIMER1
+
+				// If the apple timer went off.
+				case IDT_TIMER_FOR_APPLE: {
+					apple.apple.x = my_rand(0, GRID_W - 1);
+					apple.apple.y = my_rand(0, GRID_H - 1);
+					apple.apple_draw = TRUE;
+					// We reset the timer with a new random time for the apple.
+					SetTimer(key_of_window, IDT_TIMER_FOR_APPLE, my_rand(1000, 5000), NULL);
+					break;
+				}
+
 				default: {
 					
 				}
 			} // switch(wPram)
 			break;
-		} // Case WM_TIMER
+		}// Case WM_TIMER
 
 		// Any other case.
 		default: {
 			// Use default for the rest of the codes.
 			return DefWindowProc(key_of_window, code_of_msg, wParam, lParam);
-			break;
 		}
 	}
 	return 0;
@@ -689,7 +730,11 @@ static INT_PTR CALLBACK AboutDialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, 
 
 					//else {
 					// This destroys the dialog and unfreezes the main game window. It is needed because a dialog is something we created, like a window.
+
+					// We reset so the apple doesntt carry over into the new game.
+					apple.apple_draw = FALSE;
 					EndDialog(hwndDlg, LOWORD(wParam));
+					set_up_rand();
 					//}					
 					return (INT_PTR)TRUE;
 				}
@@ -1022,4 +1067,23 @@ static void queue_direction_if_valid(UINT new_direction) {
 	}
 	int to_push = new_direction;
 	push(&buttons_pressed, &to_push);
+}
+
+// A void that sets up getting random numbers. We call it once at the beggining of the game.
+static void set_up_rand() {
+	// Gets the number of milliseconds since pc has started. It will be different for every run.
+	random_seed = GetTickCount();
+}
+
+static int full_range_ran() {
+	// This is the formula used by the Microsoft C compiler. It multiplies the seed by a prime number and adds an offset.
+	random_seed = (random_seed * 214013 + 2531011);
+
+	// We use that becasue only 16 bits end up random so we shift it, we do &7FFF to get rid of negetive numbers.
+	// If we want a number than 32767(2^15) we use the first digits as one random number and the next 16 as another and so on.
+	return (random_seed >> 16) & 0x7FFF;
+}
+
+static int my_rand(int a, int b) {
+	return a + (full_range_ran() % (b - a + 1));
 }
