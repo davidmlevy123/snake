@@ -1,6 +1,7 @@
 ﻿#include <windows.h>
 #include <tchar.h>
 #include "additions.h" // The additions i created.
+#include "queue.h" 
 
 const wchar_t class_name[] = L"Main Window.";
 const wchar_t window_name[] = L"Snake.";
@@ -8,18 +9,32 @@ const wchar_t window_name[] = L"Snake.";
 // Create a struck that has the snake. It is a global struct
 typedef struct
 {
-	// We creata an array of points that has a length of 3(we will have the snake size at 3 for now).
-	POINT snake[3];
+	// We creata an queue of points that has a length of 3(we will have the snake size at 3 for now).
+	queue snake;
 	UINT length;
 	UINT cur_direction; // The current direction is UP=0,RIGHT=1,DOWN=2,LEFT=3.
 }Snake;
 // We create our actual snake, in c we cant give default values so we need to give the values when we define it.
-Snake my_snake = {.length = 3 , .cur_direction = RIGHT};
-void set_snake_start_points(){
-	for (int i = 0; i < my_snake.length; ++i) {
-		my_snake.snake[i].x = i + 3;
-		my_snake.snake[i].y = 5;
+Snake my_snake = { .length = 3 , .cur_direction = RIGHT };
+static void set_snake_start_points(){
+	// Distroy the snake if one still exists and has not been destroyed.
+	destroy_queue(&my_snake.snake);
+
+	POINT start_points[3];
+	// We have to do this becasue my_snake.length is a UINT meaning it cant have negitive.
+	for (int i = 0; i < (int)my_snake.length; ++i){
+		start_points[i].x = (my_snake.length - 1 - i) + 1;
+		start_points[i].y = 0;
 	}
+	my_snake.snake = create_queue(start_points, sizeof(POINT), 50, my_snake.length, 0);
+}
+
+// A queue that has the buttons pressed so we can do them on their time. If we dont have it its possible to do 2 moves per tick breaking the game.
+queue buttons_pressed;
+static void set_button_queue() {
+	// Free mem if a prev game was played so we have a new one without leaking mem.
+	destroy_queue(&buttons_pressed);
+	buttons_pressed = create_queue(NULL, sizeof(int), 3, 0, 0);
 }
 
 // A bool to check if the game has started yet.
@@ -40,19 +55,22 @@ UINT cancel_pressed = 0;
 
 // Ints for timers
 UINT_PTR timer_1 = 0;
+UINT_PTR timer_for_apple = 0;
 
-LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM key_pressed, LPARAM extra_msg_info);
-INT_PTR CALLBACK AboutDialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam);
-INT_PTR CALLBACK SettingsDialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam);
+static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM key_pressed, LPARAM extra_msg_info);
+static INT_PTR CALLBACK AboutDialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam);
+static INT_PTR CALLBACK SettingsDialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
-void Resize(HWND hwnd, UINT code_of_message, int width, int height);
-void SetHatchBrushBackground(HDC hdc, BOOL transparent);
-void SetWindowBackground(HDC hdc, PAINTSTRUCT pt, INT n); // n is an option to chose the bk colour, -1 means continue loop.
-void words_for_window(HWND hwnd, HDC hdc);
-void Eyes(HDC hdc);
-void Head(HDC hdc);
-void Mouth(HDC hdc);
-void smiley_face(HDC hdc);
+static void SetHatchBrushBackground(HDC hdc, BOOL transparent);
+static void SetWindowBackground(HDC hdc, PAINTSTRUCT pt, INT n); // n is an option to chose the bk colour, -1 means continue loop.
+static void words_for_window(HWND hwnd, HDC hdc);
+static void Eyes(HDC hdc);
+static void Head(HDC hdc);
+static void Mouth(HDC hdc);
+static void smiley_face(HDC hdc);
+static BOOL is_valid_turn(UINT new_direction, const Snake* s);
+static void queue_direction_if_valid(UINT new_direction);
+
 
 int WINAPI wWinMain(HINSTANCE handle_of_instance, HINSTANCE not_needed, PWSTR command_line, int flag_min_max_normal) {//PWSTR=wchar_t*.
 	global_hInstance = handle_of_instance;
@@ -180,7 +198,7 @@ int WINAPI wWinMain(HINSTANCE handle_of_instance, HINSTANCE not_needed, PWSTR co
 	return (int)msg.wParam;
 }
 
-LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM wParam, LPARAM lParam) {
+static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM wParam, LPARAM lParam) {
 	switch (code_of_msg) {
 
 		// Called when a menu item is selected or control sends a message or an accelerator key is pressed.
@@ -218,8 +236,10 @@ LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM wParam,
 
 						// Setting timer to move the snake.
 						timer_1 = SetTimer(key_of_window, IDT_TIMER1, 100, NULL);
+						timer_for_apple = SetTimer(key_of_window, IDT_TIMER_FOR_APPLE, NULL);
 						set_snake_start_points();
-
+						// Get the queue of the buttons pressed that need to be executed ready.
+						set_button_queue();
 						InvalidateRect(key_of_window, NULL, TRUE);
 						break;
 					}
@@ -360,8 +380,8 @@ LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM wParam,
 					HBRUSH black = CreateSolidBrush(RGB(0, 0, 0));
 					for (int i = 0; i < my_snake.length; ++i) {
 						RECT block;
-						block.left = my_snake.snake[i].x * cell_size;
-						block.top = my_snake.snake[i].y * cell_size;
+						block.left = (((POINT*)place(&my_snake.snake, i))->x) * cell_size;
+						block.top = (((POINT*)place(&my_snake.snake, i))->y) * cell_size;
 						block.right = block.left + cell_size;
 						block.bottom = block.top + cell_size;
 						FillRect(hdc, &block, black);
@@ -372,8 +392,8 @@ LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM wParam,
 					HBRUSH green = CreateSolidBrush(RGB(0, 255, 0));
 					for (int i = 0; i < my_snake.length; ++i) {
 						RECT block;
-						block.left = my_snake.snake[i].x * cell_size;
-						block.top = my_snake.snake[i].y * cell_size;
+						block.left = (((POINT*)place(&my_snake.snake, i))->x) * cell_size;
+						block.top = (((POINT*)place(&my_snake.snake, i))->y) * cell_size;
 						block.right = block.left + cell_size;
 						block.bottom = block.top + cell_size;
 						FillRect(hdc, &block, green);
@@ -396,11 +416,6 @@ LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM wParam,
 		// If the user is done resizing.
 		case WM_SIZE:
 		{
-			// In this case wParam is the flag that indicates if the window is minimized maximized or normal.
-			// The lParam has the new height and width in it. The first 16 bits are the hieght and the last 16 are width.
-			int height = HIWORD(lParam);
-			int width = LOWORD(lParam);
-
 			InvalidateRect(key_of_window, NULL, TRUE);
 			break;
 		}
@@ -448,6 +463,33 @@ LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM wParam,
 					break;
 				}
 
+				// We dont put a break in case of the left arrow we want to have the same as W so the code will just continue to there and we will put a break at the end of it.
+				case VK_LEFT: 
+				case 'A': {
+					// If we can set next direction as left we do so.
+					queue_direction_if_valid(LEFT);
+					break;
+				}
+
+				// Same logic here
+				case VK_RIGHT:
+				case 'D': {
+					queue_direction_if_valid(RIGHT);
+					break;
+				}
+
+				case VK_UP:
+				case 'W': {
+					queue_direction_if_valid(UP);
+					break;
+				}
+
+				case VK_DOWN:
+				case 'S': {
+					queue_direction_if_valid(DOWN);
+					break;
+				}
+
 				default: {
 					// Use the default.
 					return DefWindowProc(key_of_window, code_of_msg, wParam, lParam);
@@ -468,6 +510,10 @@ LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM wParam,
 		{
 			// We need to kill the timer before we end the code so it doesnt continue going off.
 			KillTimer(key_of_window, IDT_TIMER1);
+			KillTimer(key_of_window, IDT_TIMER_FOR_APPLE);
+			destroy_queue(&my_snake.snake);
+			destroy_queue(&buttons_pressed);
+
 			// If the case is to leave we end the program and window. We need the PostQuitMessage becasue if we dont have it the function will return 0 without closing the window.
 			PostQuitMessage(0);
 			return 0;
@@ -478,81 +524,97 @@ LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM wParam,
 			switch (wParam) {
 				// The timer for moving the snake went off.
 				case IDT_TIMER1:{
+
+					// We set the snake to move in next direction.
+					int next_direction = my_snake.cur_direction;
+
+					// If we had an element to pop we put it as the next direction. We pop until we get a key that is valid.
+					while(pop(&buttons_pressed, &next_direction)) {
+						if (is_valid_turn(next_direction, &my_snake)) {
+							my_snake.cur_direction = next_direction;
+							break;
+						}
+					}
+
+					POINT* cur_spot = (POINT*)(front(&my_snake.snake));
+
 					// We move each part of the snake from tail to the spot infront of it(exept the head).
 					for (int i = my_snake.length - 1; i > 0; --i) {
-						my_snake.snake[i] = my_snake.snake[i - 1];
+						POINT* cur = ((POINT*)place(&my_snake.snake, i));
+						POINT* prev = ((POINT*)place(&my_snake.snake, i - 1));
+						*cur = *prev;
 					}
 					switch (my_snake.cur_direction) {
 						case UP: {
 							// If we made it to the top of the screen.
-							if (my_snake.snake[0].y <= 0) {
+							if (cur_spot->y <= 0) {
 								// If we are at the right edge.
-								if (my_snake.snake[0].x >= GRID_W - 1) {
+								if (cur_spot->x >= GRID_W - 1) {
 									my_snake.cur_direction = LEFT;
-									my_snake.snake[0].x--;
+									cur_spot->x--;
 								}
 								else {
 									my_snake.cur_direction = RIGHT;
-									my_snake.snake[0].x++;
+									cur_spot->x++;
 								}
 							}
 							// If we had  a valid spot.
 							else {
 								// We do y-- because y=0 is the top (y grows downwards).
-								my_snake.snake[0].y--;
+								cur_spot->y--;
 							}
 							break;
 						}
 						case DOWN: {
 							// Same logic just for bottom and not top
-							if (my_snake.snake[0].y >= GRID_H - 1) {
-								if (my_snake.snake[0].x >= GRID_W - 1) {
+							if (cur_spot->y >= GRID_H - 1) {
+								if (cur_spot->x >= GRID_W - 1) {
 									my_snake.cur_direction = LEFT;
-									my_snake.snake[0].x--;
+									cur_spot->x--;
 								}
 								else {
 									my_snake.cur_direction = RIGHT;
-									my_snake.snake[0].x++;
+									cur_spot->x++;
 								}
 							}
 							else
 							{
-								my_snake.snake[0].y++;
+								cur_spot->y++;
 							}
 							break;
 						}
 						case RIGHT: {
 							// If we make it to right barier we go up.
-							if (my_snake.snake[0].x >= GRID_W - 1) {
-								if (my_snake.snake[0].y <= 0) {
+							if (cur_spot->x >= GRID_W - 1) {
+								if (cur_spot->y <= 0) {
 									my_snake.cur_direction = DOWN;
-									my_snake.snake[0].y++;
+									cur_spot->y++;
 								}
 								else {
 									my_snake.cur_direction = UP;
-									my_snake.snake[0].y--;
+									cur_spot->y--;
 								}
 							}
 							else 
 							{
-								my_snake.snake[0].x++;
+								cur_spot->x++;
 							}
 							break;
 						}
 						case LEFT: {
-							if (my_snake.snake[0].x <= 0) {
-								if (my_snake.snake[0].y <= 0) {
+							if (cur_spot->x <= 0) {
+								if (cur_spot->y <= 0) {
 									my_snake.cur_direction = DOWN;
-									my_snake.snake[0].y++;
+									cur_spot->y++;
 								}
 								else {
 									my_snake.cur_direction = UP;
-									my_snake.snake[0].y--;
+									cur_spot->y--;
 								}
 							}
 							else
 							{
-								my_snake.snake[0].x--;
+								cur_spot->x--;
 							}
 							break;
 						}
@@ -581,7 +643,7 @@ LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM wParam,
 	return 0;
 }
 
-INT_PTR CALLBACK AboutDialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+static INT_PTR CALLBACK AboutDialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	switch (uMsg) {
 		// Called the moment before the dialog appears on screen
 		case WM_INITDIALOG:
@@ -645,6 +707,7 @@ INT_PTR CALLBACK AboutDialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM 
 					return (INT_PTR)TRUE;
 				}
 			}
+			return (INT_PTR)FALSE;
 			break;
 		}
 
@@ -656,7 +719,7 @@ INT_PTR CALLBACK AboutDialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM 
 }
 
 // Function for modeless dialog.
-INT_PTR CALLBACK SettingsDialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+static INT_PTR CALLBACK SettingsDialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	switch (uMsg) {
 		case WM_INITDIALOG: {
 			return (INT_PTR)TRUE;
@@ -703,7 +766,7 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPAR
 	return (INT_PTR)FALSE;
 }
 
-void SetHatchBrushBackground(HDC hdc, BOOL transparent) {
+static void SetHatchBrushBackground(HDC hdc, BOOL transparent) {
 	// We create a brush that is Blue. 
 	HBRUSH hSolidBrush = CreateSolidBrush(RGB(0, 0, 255));
 	// It fills the empty spaces between the hatch lines.
@@ -753,7 +816,7 @@ void SetHatchBrushBackground(HDC hdc, BOOL transparent) {
 }
 
 // Function to set the colour of the background. 
-void SetWindowBackground(HDC hdc, PAINTSTRUCT pt, INT n) {
+static void SetWindowBackground(HDC hdc, PAINTSTRUCT pt, INT n) {
 	// We use the FillRect function to fill in the rectangle in black. The rectangle is the window in this case.
 	int save_bk_colour = bk_colour;
 	// If we got a specified value we use it.
@@ -838,7 +901,7 @@ void SetWindowBackground(HDC hdc, PAINTSTRUCT pt, INT n) {
 }
 
 // Function to add main words to the window. If child: "This Is A Child Window." , If its has no parent: "Welcome To My Window.".
-void words_for_window(HWND hwnd, HDC hdc) {
+static void words_for_window(HWND hwnd, HDC hdc) {
 	LONG_PTR style;
 
 	// If the coordinates of the window are relitive to a parent that means it must be a child. 
@@ -861,7 +924,7 @@ void words_for_window(HWND hwnd, HDC hdc) {
 }
 
 // We create the eyes for the similey face.
-void Eyes(HDC hdc) {
+static void Eyes(HDC hdc) {
 	// We set the background mode to TRANSPARENT mode.
 	SetBkMode(hdc, TRANSPARENT);
 
@@ -888,7 +951,7 @@ void Eyes(HDC hdc) {
 }
 
 // We create the head for the similey face.
-void Head(HDC hdc) {
+static void Head(HDC hdc) {
 	// We create a blue brush for the head and put it in hdc.
 	HBRUSH head = CreateSolidBrush(RGB(0, 0, 255));
 	HBRUSH default_brush = (HBRUSH)SelectObject(hdc, head);
@@ -904,7 +967,7 @@ void Head(HDC hdc) {
 }
 
 // Function to create the mouth.
-void Mouth(HDC hdc) {
+static void Mouth(HDC hdc) {
 	// We create a green brush for the mouth and put it in hdc
 	HBRUSH mouth_brush = CreateSolidBrush(RGB(255, 0, 0));
 	HBRUSH default_brush = SelectObject(hdc, mouth_brush);
@@ -918,9 +981,45 @@ void Mouth(HDC hdc) {
 }
 
 // Funtion to create the smiley face.
-void smiley_face(HDC hdc) {
+static void smiley_face(HDC hdc) {
 	Head(hdc);
 	Eyes(hdc);
 	Mouth(hdc);
 }
 
+static BOOL is_valid_turn(UINT new_direction, const Snake* s) {
+	// If its the same direction or oppisate directoin(distance of 2 loop around values).
+	if (new_direction == s->cur_direction || new_direction == (s->cur_direction + 2) % 4) {
+		return FALSE;
+	}
+	POINT* p = (POINT*)(front(&s->snake));
+	if (new_direction == UP && (p->y <= 0)) {
+		return FALSE;
+	}
+	if (new_direction == DOWN && (p->y >= GRID_H - 1)) {
+		return FALSE;
+	}
+	if (new_direction == RIGHT && (p->x >= GRID_W - 1)) {
+		return FALSE;
+	}
+	if (new_direction == LEFT && (p->x <= 0)) {
+		return FALSE;
+	}
+	return TRUE;
+}
+
+// Puts a direction in the queue if it is going to be a valid direction when its turn comes up.
+static void queue_direction_if_valid(UINT new_direction) {
+	UINT cur = my_snake.cur_direction;
+	int* last_in_queue = (int*)tail(&buttons_pressed);
+	// We put the value that will come up right before the new key that was pressed.
+	if (last_in_queue != NULL) {
+		cur = *last_in_queue;
+	}
+	// If same direction/opposite direction we dont add to queue and leave function.
+	if (cur == new_direction || cur == ((new_direction + 2) % 4)) {
+		return;
+	}
+	int to_push = new_direction;
+	push(&buttons_pressed, &to_push);
+}
