@@ -10,6 +10,7 @@
 #define WHITEBK 4
 #define LIGHTGREENBK 5
 #define LIGHTBLUEBK 6
+#define VIOLETBK 7
 
 // We define each icon and we chose numbers that dont currently have a icon.
 #define IDI_SNAKE_LOGO 101

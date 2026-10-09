@@ -29,7 +29,7 @@ queue create_queue(void* data, UINT type_size, UINT max, UINT size, UINT head) {
 	return new_q;
 }
 
-void copy(const void* from, void* into, const int type_size)
+void copy(const void* from, void* into, const size_t type_size)
 {
 	const char* from_bytes = (const char*)from;
 	char* into_bytes = (char*)into;
@@ -62,7 +62,7 @@ BOOL push(queue* q, void* item_to_add) {
 	}
 
 	// Same idea as pop just flipped.
-	int offset = q->type_size * ((q->size + q->head) % (q->max));
+	size_t offset = q->type_size * ((q->size + q->head) % (q->max));
 	if (item_to_add != NULL)
 	{
 		copy(item_to_add, (char*)q->data + offset, q->type_size);
@@ -85,7 +85,7 @@ void* place(const queue* q, const int index) {
 	// Because we start at head we need to go index places from there meaning there can be a loop around so we mod the answer by the size of the queue.
 	int real_index = (index + q->head) % q->max;
 	// Get the offset
-	int offset = real_index * q->type_size;
+	size_t offset = real_index * q->type_size;
 
 	// We get all the bytes of data and put them into the ans_bytes
 	char* ans_bytes = (char*)q->data;

@@ -16,7 +16,7 @@ typedef struct {
 // head - the current spot in data to count as the first element, 0 for all of data goes into queue.
 queue create_queue(void* data, UINT type_size, UINT max, UINT size, UINT head);
 
-void copy(const void* from, void* into, const int type_size); // copys from var to var.
+void copy(const void* from, void* into, const size_t type_size); // copys from var to var.
 
 // Returns TRUE if copied and FALSE if it didnt.
 BOOL pop(queue* q, void* out_item);

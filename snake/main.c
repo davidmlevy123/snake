@@ -18,6 +18,8 @@ Snake my_snake = { .length = 3 , .cur_direction = RIGHT };
 static void set_snake_start_points(){
 	// Distroy the snake if one still exists and has not been destroyed.
 	destroy_queue(&my_snake.snake);
+	my_snake.length = 3;
+	my_snake.cur_direction = RIGHT;
 
 	POINT start_points[3];
 	// We have to do this becasue my_snake.length is a UINT meaning it cant have negitive.
@@ -60,7 +62,7 @@ UINT bk_colour = BLACKBK;
 UINT cancel_pressed = 0;
 
 // A int that holds the state of our random numbers.
-static unsigned int random_seed = 1;
+static unsigned long long random_seed = 1;
 
 static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM key_pressed, LPARAM extra_msg_info);
 static INT_PTR CALLBACK AboutDialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam);
@@ -73,11 +75,13 @@ static void Eyes(HDC hdc);
 static void Head(HDC hdc);
 static void Mouth(HDC hdc);
 static void smiley_face(HDC hdc);
-static BOOL is_valid_turn(UINT new_direction, const Snake* s);
+static BOOL is_valid_turn(const UINT new_direction, const Snake* s);
 static void queue_direction_if_valid(UINT new_direction);
 static void set_up_rand();
 static int full_range_ran();
-static int my_rand(int a, int b); // Gets a random number in between a and b.
+static int my_rand(const int a, const int b); // Gets a random number in between a and b.
+static BOOL point_on_snake(const POINT* p, const Snake* s, const UINT start_index); 
+static BOOL is_snake_head(const POINT* p, const Snake* s);
 
 int WINAPI wWinMain(HINSTANCE handle_of_instance, HINSTANCE not_needed, PWSTR command_line, int flag_min_max_normal) {//PWSTR=wchar_t*.
 	global_hInstance = handle_of_instance;
@@ -241,13 +245,21 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 						// we set the flag that says the game has started to true.
 						game_started = TRUE;
 
+						// We get the random numers ready to be used.
+						set_up_rand();
+
 						// Setting timer to move the snake.
 						SetTimer(key_of_window, IDT_TIMER1, 100, NULL);
-						// Wegive the apple a random amount of time to spawn in. We make teh timer again in WM_TIMER becasuse we want a new random number for each apple.
+						// We give the apple a random amount of time to spawn in. We make teh timer again in WM_TIMER becasuse we want a new random number for each apple.
 						SetTimer(key_of_window, IDT_TIMER_FOR_APPLE, my_rand(1000, 5000), NULL);
-						set_snake_start_points();
+
 						// Get the queue of the buttons pressed that need to be executed ready.
 						set_button_queue();
+
+						// We reset so the apple and snake so they dont carry over into the new game.
+						apple.apple_draw = FALSE;
+						set_snake_start_points();
+
 						InvalidateRect(key_of_window, NULL, TRUE);
 						break;
 					}
@@ -313,8 +325,8 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 				
 				// If the background colour button was pressed in the settings menu.
 				case ID_SETTINGS_BK_COLOUR: {
-					// If it is light blue, which is the last colour we circle back to the first, black.
-					if (bk_colour == LIGHTBLUEBK) {
+					// If it is violet, which is the last colour we circle back to the first, black.
+					if (bk_colour == VIOLETBK) {
 						bk_colour = BLACKBK;
 					}
 					// If we are not at the end we go to the next colour.
@@ -383,10 +395,10 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 					DeleteObject(black_outline);
 				}
 
-				// Creating the snake and giving him a colour.
-				if (bk_colour == GREENBK || bk_colour == LIGHTGREENBK) {
+				// Creating the snake and giving him a colour. If the background is green we make him black so we can see him, if its red the apples are green so we agian make the snake black.
+				if (bk_colour == GREENBK || bk_colour == LIGHTGREENBK || bk_colour == REDBK) {
 					HBRUSH black = CreateSolidBrush(RGB(0, 0, 0));
-					for (int i = 0; i < my_snake.length; ++i) {
+					for (int i = 0; i < (int)my_snake.length; ++i) {
 						RECT block;
 						block.left = (((POINT*)place(&my_snake.snake, i))->x) * cell_size;
 						block.top = (((POINT*)place(&my_snake.snake, i))->y) * cell_size;
@@ -398,7 +410,7 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 				}
 				else {
 					HBRUSH green = CreateSolidBrush(RGB(0, 255, 0));
-					for (int i = 0; i < my_snake.length; ++i) {
+					for (int i = 0; i < (int)my_snake.length; ++i) {
 						RECT block;
 						block.left = (((POINT*)place(&my_snake.snake, i))->x) * cell_size;
 						block.top = (((POINT*)place(&my_snake.snake, i))->y) * cell_size;
@@ -568,6 +580,9 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 					}
 
 					POINT* cur_spot = (POINT*)(front(&my_snake.snake));
+					// If we ate an apple we add one at the end meaning we can just move everything one forward but move the tail one back. We copy by value so we put that value at the end not a pointer becasue then it moves with the for loop.
+					POINT to_add;
+					copy(tail(&my_snake.snake), &to_add, sizeof(POINT));
 
 					// We move each part of the snake from tail to the spot infront of it(exept the head).
 					for (int i = my_snake.length - 1; i > 0; --i) {
@@ -575,6 +590,15 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 						POINT* prev = ((POINT*)place(&my_snake.snake, i - 1));
 						*cur = *prev;
 					}
+
+					// If the snake is in the same spot as the apple.
+					if (apple.apple_draw && is_snake_head(&apple.apple,&my_snake)) {
+						if (push(&my_snake.snake, &to_add)) {
+							my_snake.length++;
+						}
+						apple.apple_draw = FALSE;
+					}
+
 					switch (my_snake.cur_direction) {
 						case UP: {
 							// If we made it to the top of the screen.
@@ -654,14 +678,28 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 							my_snake.cur_direction = UP;
 						}// default
 					}// switch (my_snake.cur_direction)
+					
+					// After we moved the head we check if it hits any of the other points on the snake ending the game. We start at 1 becasue 0 is the head.
+					if (point_on_snake(cur_spot, &my_snake, 1)) {
+						game_started = FALSE;
+						// We kill the timers so the game doesnt run in the background just that w edont see it.
+						KillTimer(key_of_window, IDT_TIMER1);
+						KillTimer(key_of_window, IDT_TIMER_FOR_APPLE);
+					}
+
 					InvalidateRect(key_of_window, NULL, TRUE);
 					break;
 				}// case IDT_TIMER1
 
 				// If the apple timer went off.
 				case IDT_TIMER_FOR_APPLE: {
-					apple.apple.x = my_rand(0, GRID_W - 1);
-					apple.apple.y = my_rand(0, GRID_H - 1);
+
+					// We get random numbers and if they are on the snake we get new ones becasue we dont want the apple on the snake.
+					do {
+						apple.apple.x = my_rand(0, GRID_W - 1);
+						apple.apple.y = my_rand(0, GRID_H - 1);
+					} while (point_on_snake(&apple.apple, &my_snake, 0));
+
 					apple.apple_draw = TRUE;
 					// We reset the timer with a new random time for the apple.
 					SetTimer(key_of_window, IDT_TIMER_FOR_APPLE, my_rand(1000, 5000), NULL);
@@ -731,10 +769,7 @@ static INT_PTR CALLBACK AboutDialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, 
 					//else {
 					// This destroys the dialog and unfreezes the main game window. It is needed because a dialog is something we created, like a window.
 
-					// We reset so the apple doesntt carry over into the new game.
-					apple.apple_draw = FALSE;
 					EndDialog(hwndDlg, LOWORD(wParam));
-					set_up_rand();
 					//}					
 					return (INT_PTR)TRUE;
 				}
@@ -925,8 +960,16 @@ static void SetWindowBackground(HDC hdc, PAINTSTRUCT pt, INT n) {
 			DeleteObject(colour);
 			break;
 		}
+		case VIOLETBK: {
+			HBRUSH colour = CreateSolidBrush(RGB(151, 89, 154));
+			HBRUSH default_brush = (HBRUSH)SelectObject(hdc, colour);
+			FillRect(hdc, &pt.rcPaint, colour);
+			SelectObject(hdc, default_brush);
+			DeleteObject(colour);
+			break;
+		}
 		default: {
-			int ans = MessageBox(GetModuleHandle(NULL), L"Invalid Background Colour.\nSet To Default?", L"ERROR", MB_YESNO | MB_ICONERROR);
+			int ans = MessageBox(global_cur_win, L"Invalid Background Colour.\nSet To Default?", L"ERROR", MB_YESNO | MB_ICONERROR);
 			// Set to defaule, Black
 			if (ans == IDYES) {
 				HBRUSH colour = CreateSolidBrush(RGB(0, 0, 0));
@@ -954,7 +997,7 @@ static void words_for_window(HWND hwnd, HDC hdc) {
 	{
 		TCHAR text[] = L"This Is A Child Window.";
 		SetTextColor(hdc, RGB(0, 255, 0));
-		TextOut(hdc, 5, 5, text, _tcslen(text));
+		TextOut(hdc, 5, 5, text, (int)_tcslen(text));
 	}
 	else {
 		// We set the background of text and text colours.
@@ -963,7 +1006,7 @@ static void words_for_window(HWND hwnd, HDC hdc) {
 		SetTextColor(hdc, RGB(0, 255, 0));
 		if (!game_started) {
 			// We print the text with our colours. We do that only if we havent started the game so we dont block the game with the words. 
-			TextOut(hdc, 5, 5, text, _tcslen(text));
+			TextOut(hdc, 5, 5, text, (int)_tcslen(text));
 		}
 	}
 }
@@ -1032,7 +1075,7 @@ static void smiley_face(HDC hdc) {
 	Mouth(hdc);
 }
 
-static BOOL is_valid_turn(UINT new_direction, const Snake* s) {
+static BOOL is_valid_turn(const UINT new_direction, const Snake* s) {
 	// If its the same direction or oppisate directoin(distance of 2 loop around values).
 	if (new_direction == s->cur_direction || new_direction == (s->cur_direction + 2) % 4) {
 		return FALSE;
@@ -1072,18 +1115,35 @@ static void queue_direction_if_valid(UINT new_direction) {
 // A void that sets up getting random numbers. We call it once at the beggining of the game.
 static void set_up_rand() {
 	// Gets the number of milliseconds since pc has started. It will be different for every run.
-	random_seed = GetTickCount();
+	random_seed = GetTickCount64();
 }
 
+// Return a random number in the range 0->2^15-1.
 static int full_range_ran() {
 	// This is the formula used by the Microsoft C compiler. It multiplies the seed by a prime number and adds an offset.
 	random_seed = (random_seed * 214013 + 2531011);
 
 	// We use that becasue only 16 bits end up random so we shift it, we do &7FFF to get rid of negetive numbers.
-	// If we want a number than 32767(2^15) we use the first digits as one random number and the next 16 as another and so on.
+	// If we want a number than 32767(2^15-1) we use the first digits as one random number and the next 16 as another and so on.
 	return (random_seed >> 16) & 0x7FFF;
 }
 
-static int my_rand(int a, int b) {
+static int my_rand(const int a,const int b) {
 	return a + (full_range_ran() % (b - a + 1));
+}
+
+static BOOL point_on_snake(const POINT* p, const Snake* s, const UINT start_index) {
+	// We go over the snake segments one by one checking if its the smae as p.
+	for (int i = start_index; i < (int)s->length; ++i) {
+		POINT* cur_snake_spot = (POINT*)(place(&s->snake, i));
+		if (p->x == cur_snake_spot->x && p->y == cur_snake_spot->y) {
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+
+static BOOL is_snake_head(const POINT* p, const Snake* s) {
+	POINT* snake_head = front(&s->snake);
+	return ((p->x == snake_head->x) && (p->y == snake_head->y));
 }
