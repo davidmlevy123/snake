@@ -46,7 +46,7 @@ typedef struct {
 Apple apple = { .apple_draw = FALSE };
 
 // A bool to check if the game has started yet.
-BOOL game_started = FALSE;
+UINT game_state = NOT_STARTED;
 
 // We have a global hInstance so we can use it in the function and not just main.
 HINSTANCE global_hInstance;
@@ -82,6 +82,7 @@ static int full_range_ran();
 static int my_rand(const int a, const int b); // Gets a random number in between a and b.
 static BOOL point_on_snake(const POINT* p, const Snake* s, const UINT start_index); 
 static BOOL is_snake_head(const POINT* p, const Snake* s);
+static void start_game(const HWND key_of_window);
 
 int WINAPI wWinMain(HINSTANCE handle_of_instance, HINSTANCE not_needed, PWSTR command_line, int flag_min_max_normal) {//PWSTR=wchar_t*.
 	global_hInstance = handle_of_instance;
@@ -238,29 +239,7 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 					{
 						//// We have started a game since last cancel.
 						//cancel_pressed = 0;
-						//// I havent made any of the game logic yet so for now it does nothing.
-						//MessageBox(key_of_window, L"Game Not Created yet", L"ERROR:", MB_OK);// We can use TEXT(""), _T("") or L"".
-						//draw_face = TRUE;
-
-						// we set the flag that says the game has started to true.
-						game_started = TRUE;
-
-						// We get the random numers ready to be used.
-						set_up_rand();
-
-						// Setting timer to move the snake.
-						SetTimer(key_of_window, IDT_TIMER1, 100, NULL);
-						// We give the apple a random amount of time to spawn in. We make teh timer again in WM_TIMER becasuse we want a new random number for each apple.
-						SetTimer(key_of_window, IDT_TIMER_FOR_APPLE, my_rand(1000, 5000), NULL);
-
-						// Get the queue of the buttons pressed that need to be executed ready.
-						set_button_queue();
-
-						// We reset so the apple and snake so they dont carry over into the new game.
-						apple.apple_draw = FALSE;
-						set_snake_start_points();
-
-						InvalidateRect(key_of_window, NULL, TRUE);
+						start_game(key_of_window);
 						break;
 					}
 
@@ -355,18 +334,13 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 			// Prints the words for the window.
 			words_for_window(key_of_window, hdc);
 
-			if (draw_face) {
+			if (game_state == GAME_OVER) {
 				// We call the function to create the whole smiley face.
 				smiley_face(hdc);
-				// We set the draw_face to false so next time we dont draw unless we want too.
-				draw_face = FALSE;
-				// We pause everthing for 5 seconds and then delete the face. After the sleep 
-				Sleep(1000);
-				InvalidateRect(key_of_window, NULL, TRUE);
 			}
 
 			// If the used dicided to start the game.
-			if (game_started) {
+			else if (game_state == GAME_STARTED) {
 				
 				// We get the game dimentions.
 				RECT screen_size;
@@ -681,10 +655,21 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 					
 					// After we moved the head we check if it hits any of the other points on the snake ending the game. We start at 1 becasue 0 is the head.
 					if (point_on_snake(cur_spot, &my_snake, 1)) {
-						game_started = FALSE;
 						// We kill the timers so the game doesnt run in the background just that w edont see it.
 						KillTimer(key_of_window, IDT_TIMER1);
 						KillTimer(key_of_window, IDT_TIMER_FOR_APPLE);
+						
+						// Game is over we lost.
+						game_state = GAME_OVER;
+
+						// Redraw the screen getting rid of the game.
+						InvalidateRect(key_of_window, NULL, TRUE);
+
+						// We set a timer for 1s so the face stays on screen for 2s
+						SetTimer(key_of_window, IDT_TIMER_GAME_OVER, 2000, NULL);
+
+						// Leave the case.
+						break;
 					}
 
 					InvalidateRect(key_of_window, NULL, TRUE);
@@ -704,6 +689,29 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 					// We reset the timer with a new random time for the apple.
 					SetTimer(key_of_window, IDT_TIMER_FOR_APPLE, my_rand(1000, 5000), NULL);
 					break;
+				}
+
+				// If the timer we set for the face staying on screen goes off.
+				case IDT_TIMER_GAME_OVER: {
+					// We kill the timer because we only want it to run once.
+					KillTimer(key_of_window, IDT_TIMER_GAME_OVER);
+
+					// set back to false so we dont draw face again.
+					draw_face = FALSE;
+
+					// We redraw the screen getting rid of smiley face.
+					InvalidateRect(key_of_window, NULL, TRUE);
+
+					int ans = MessageBox(key_of_window, L"Score: \nReplay?", L"GAME OVER", MB_ICONINFORMATION | MB_YESNO);
+					// If the user choose to start the game agian we restart 
+					if (ans == IDYES) {
+						start_game(key_of_window);
+					}
+					// If he choose not to we go back to main screen.
+					else {
+						game_state = NOT_STARTED;
+						InvalidateRect(key_of_window, NULL, TRUE);
+					}
 				}
 
 				default: {
@@ -1004,7 +1012,7 @@ static void words_for_window(HWND hwnd, HDC hdc) {
 		TCHAR text[] = L"Welcome To My Window.";
 		SetBkColor(hdc, RGB(255, 255, 255));
 		SetTextColor(hdc, RGB(0, 255, 0));
-		if (!game_started) {
+		if (game_state == NOT_STARTED) {
 			// We print the text with our colours. We do that only if we havent started the game so we dont block the game with the words. 
 			TextOut(hdc, 5, 5, text, (int)_tcslen(text));
 		}
@@ -1146,4 +1154,27 @@ static BOOL point_on_snake(const POINT* p, const Snake* s, const UINT start_inde
 static BOOL is_snake_head(const POINT* p, const Snake* s) {
 	POINT* snake_head = front(&s->snake);
 	return ((p->x == snake_head->x) && (p->y == snake_head->y));
+}
+
+// Gets the game ready for starting.
+static void start_game(const HWND key_of_window) {
+	// we set the flag that says the game has started to true.
+	game_state = GAME_STARTED;
+
+	// We get the random numers ready to be used.
+	set_up_rand();
+
+	// Setting timer to move the snake.
+	SetTimer(key_of_window, IDT_TIMER1, 100, NULL);
+	// We give the apple a random amount of time to spawn in. We make teh timer again in WM_TIMER becasuse we want a new random number for each apple.
+	SetTimer(key_of_window, IDT_TIMER_FOR_APPLE, my_rand(1000, 5000), NULL);
+
+	// Get the queue of the buttons pressed that need to be executed ready.
+	set_button_queue();
+
+	// We reset so the apple and snake so they dont carry over into the new game.
+	apple.apple_draw = FALSE;
+	set_snake_start_points();
+
+	InvalidateRect(key_of_window, NULL, TRUE);
 }

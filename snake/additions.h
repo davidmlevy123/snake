@@ -48,10 +48,16 @@
 // Timers
 #define IDT_TIMER1 1000
 #define IDT_TIMER_FOR_APPLE 1001
+#define IDT_TIMER_GAME_OVER 1002
 
 // Grid dimentions for game.
 #define GRID_W 30
 #define GRID_H 20
 
-// defualt values for queue.
+// Defualt values for queue.
 #define DEFAULT_MAX_Q 100
+
+// Game states
+#define NOT_STARTED 0
+#define GAME_STARTED 1
+#define GAME_OVER 2
