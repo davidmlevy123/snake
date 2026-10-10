@@ -33,6 +33,7 @@
 #define IDD_BASIC_DIALOG 400
 #define ID_START_GAME_BUTTON 401
 #define ID_CANCEL_DIALOG 402 
+#define ID_SCORE_DIALOG 403
 
 // Modeless dialogs
 #define IDD_MODELESS_DIALOG 500
@@ -49,6 +50,7 @@
 #define IDT_TIMER1 1000
 #define IDT_TIMER_FOR_APPLE 1001
 #define IDT_TIMER_GAME_OVER 1002
+#define IDT_TIMER_TICK_SPEED 1003
 
 // Grid dimentions for game.
 #define GRID_W 30

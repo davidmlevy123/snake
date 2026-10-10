@@ -1,6 +1,6 @@
 #include "queue.h" 
 
-queue create_queue(void* data, UINT type_size, UINT max, UINT size, UINT head) {
+queue create_queue(const void* data, const UINT type_size, const UINT max, const UINT size, const UINT head) {
 	if (type_size == 0) {
 		queue error = { 0 };
 		// max can never be 0 because then we dont have a queue so we return a queue with max=0 indecating there is an error.

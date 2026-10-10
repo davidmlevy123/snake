@@ -4,7 +4,7 @@
 #include "queue.h" 
 
 const wchar_t class_name[] = L"Main Window.";
-const wchar_t window_name[] = L"Snake.";
+const wchar_t window_name[] = L"Snake";
 
 // Create a struck that has the snake. It is a global struct
 typedef struct {
@@ -61,6 +61,13 @@ BOOL draw_face = FALSE;
 UINT bk_colour = BLACKBK;
 UINT cancel_pressed = 0;
 
+// The score we got in the game.
+UINT score = 0;
+UINT high_score = 0;
+
+// The time of a tick in the game, meaning the speed of the snake.
+UINT cur_timer_speed = 100;
+
 // A int that holds the state of our random numbers.
 static unsigned long long random_seed = 1;
 
@@ -76,13 +83,17 @@ static void Head(HDC hdc);
 static void Mouth(HDC hdc);
 static void smiley_face(HDC hdc);
 static BOOL is_valid_turn(const UINT new_direction, const Snake* s);
-static void queue_direction_if_valid(UINT new_direction);
+static void queue_direction_if_valid(const UINT new_direction);
 static void set_up_rand();
 static int full_range_ran();
 static int my_rand(const int a, const int b); // Gets a random number in between a and b.
 static BOOL point_on_snake(const POINT* p, const Snake* s, const UINT start_index); 
 static BOOL is_snake_head(const POINT* p, const Snake* s);
 static void start_game(const HWND key_of_window);
+static void print_game_score(HDC hdc, const int cell_size);
+static BOOL get_high_score_file_path(wchar_t* path);
+static void set_high_score();
+static void get_high_score();
 
 int WINAPI wWinMain(HINSTANCE handle_of_instance, HINSTANCE not_needed, PWSTR command_line, int flag_min_max_normal) {//PWSTR=wchar_t*.
 	global_hInstance = handle_of_instance;
@@ -417,6 +428,8 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 					}
 				}
 				
+				// We call the function that prints our game score.
+				print_game_score(hdc, cell_size);
 			}
 
 			// We must end the painting.
@@ -522,12 +535,24 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 			break;
 		}
 
+		// Automatically caleed when window is created. 
+		case WM_CREATE: {
+			// For WM_CREATE the lParam hold the info about the window mainly(what we need) the style.
+			CREATESTRUCT* create_info = (CREATESTRUCT*)lParam;
+			// If the window we are at now isnt a child, we get the high score of the game. It is only needed once per run and is cleaner here than in the main.
+			if (!(create_info->style & WS_CHILD)) {
+				get_high_score();
+			}
+			return 0;
+		}
+
 		// Automatically called after WM_CLOSE.
 		case WM_DESTROY:
 		{
 			// We need to kill the timer before we end the code so it doesnt continue going off.
 			KillTimer(key_of_window, IDT_TIMER1);
 			KillTimer(key_of_window, IDT_TIMER_FOR_APPLE);
+			KillTimer(key_of_window, IDT_TIMER_TICK_SPEED);
 			destroy_queue(&my_snake.snake);
 			destroy_queue(&buttons_pressed);
 
@@ -571,6 +596,7 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 							my_snake.length++;
 						}
 						apple.apple_draw = FALSE;
+						score++;
 					}
 
 					switch (my_snake.cur_direction) {
@@ -672,6 +698,9 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 						break;
 					}
 
+					// We reset the timer with the cur tick speed it gets changed in the timer for tick speed.
+					SetTimer(key_of_window, IDT_TIMER1, cur_timer_speed, NULL);
+
 					InvalidateRect(key_of_window, NULL, TRUE);
 					break;
 				}// case IDT_TIMER1
@@ -696,13 +725,21 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 					// We kill the timer because we only want it to run once.
 					KillTimer(key_of_window, IDT_TIMER_GAME_OVER);
 
+					// We kill the timer that lowers the tick speed during the game.
+					KillTimer(key_of_window, IDT_TIMER_TICK_SPEED);
+
 					// set back to false so we dont draw face again.
 					draw_face = FALSE;
 
 					// We redraw the screen getting rid of smiley face.
 					InvalidateRect(key_of_window, NULL, TRUE);
 
-					int ans = MessageBox(key_of_window, L"Score: \nReplay?", L"GAME OVER", MB_ICONINFORMATION | MB_YESNO);
+					// We create a text a that has in it what we need fot the print in the MessageBox that says the score and the replay?.
+					wchar_t text[256];
+					swprintf(text, sizeof(text) / sizeof(wchar_t), L"Score: %u\nReplay?", score);
+
+					int ans = MessageBox(key_of_window, text, L"GAME OVER", MB_ICONINFORMATION | MB_YESNO);
+
 					// If the user choose to start the game agian we restart 
 					if (ans == IDYES) {
 						start_game(key_of_window);
@@ -712,6 +749,22 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 						game_state = NOT_STARTED;
 						InvalidateRect(key_of_window, NULL, TRUE);
 					}
+
+					// If the score we got this game is the high score (high score gets the number from the file at the beggining) we set it here and not in WM_DESTROY because if the code crashes we might lose the high score so its better here.
+					if (score > high_score) {
+						high_score = score;
+						set_high_score();
+					}
+					break;
+				}
+
+				// If the timer that tells us to lower the tick speed goes off.
+				case IDT_TIMER_TICK_SPEED: {
+					// If the current tick speed is 10ms we stop lowering because then it gets too fast.
+					if (cur_timer_speed > 10) {
+						cur_timer_speed--;
+					}
+					break;
 				}
 
 				default: {
@@ -743,6 +796,7 @@ static INT_PTR CALLBACK AboutDialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, 
 				// We set the new dialogs text in the cancel box to "Cancel: x". x is the amount of cancels since last game.
 				SetDlgItemText(hwndDlg, ID_CANCEL_DIALOG, final_text);
 			}
+
 			return (INT_PTR)TRUE;
 		}
 
@@ -834,6 +888,7 @@ static INT_PTR CALLBACK SettingsDialogProc(HWND hwndDlg, UINT uMsg, WPARAM wPara
 				{
 					// We use destroy DestroyWindow because that is what is used for a task that did not freeze everything else(a normal dialog does).
 					DestroyWindow(hwndDlg);
+					handle_to_settings = NULL;
 					return (INT_PTR)TRUE;
 					break;
 				}
@@ -1105,7 +1160,7 @@ static BOOL is_valid_turn(const UINT new_direction, const Snake* s) {
 }
 
 // Puts a direction in the queue if it is going to be a valid direction when its turn comes up.
-static void queue_direction_if_valid(UINT new_direction) {
+static void queue_direction_if_valid(const UINT new_direction) {
 	UINT cur = my_snake.cur_direction;
 	int* last_in_queue = (int*)tail(&buttons_pressed);
 	// We put the value that will come up right before the new key that was pressed.
@@ -1136,7 +1191,7 @@ static int full_range_ran() {
 	return (random_seed >> 16) & 0x7FFF;
 }
 
-static int my_rand(const int a,const int b) {
+static int my_rand(const int a, const int b) {
 	return a + (full_range_ran() % (b - a + 1));
 }
 
@@ -1164,8 +1219,13 @@ static void start_game(const HWND key_of_window) {
 	// We get the random numers ready to be used.
 	set_up_rand();
 
+	// Reset the tick time from previous game.
+	cur_timer_speed = 100;
+
+	// We set the timer that lowers the tick speed every 4 secs.
+	SetTimer(key_of_window, IDT_TIMER_TICK_SPEED, 4000, NULL);
 	// Setting timer to move the snake.
-	SetTimer(key_of_window, IDT_TIMER1, 100, NULL);
+	SetTimer(key_of_window, IDT_TIMER1, cur_timer_speed, NULL);
 	// We give the apple a random amount of time to spawn in. We make teh timer again in WM_TIMER becasuse we want a new random number for each apple.
 	SetTimer(key_of_window, IDT_TIMER_FOR_APPLE, my_rand(1000, 5000), NULL);
 
@@ -1176,5 +1236,166 @@ static void start_game(const HWND key_of_window) {
 	apple.apple_draw = FALSE;
 	set_snake_start_points();
 
+	// We reset the game score for starting a new game 
+	score = 0;
+
+	// We repaint the window with the changes.
 	InvalidateRect(key_of_window, NULL, TRUE);
+}
+
+// Prints the current score of game onto the screen.
+static void print_game_score(HDC hdc, const int cell_size) {
+	int font_size = -(cell_size);
+	HFONT my_font =
+		CreateFont(-30, // cHeight - the height of the character if negative. If positive the height of the cell that the char is in so char size would be a bit smaller and for 0 the default for that font.
+			0, 0, 0,
+			FW_ULTRABOLD, // Font type (i.e. normal, bold, light, super bold...)
+			FALSE, FALSE, FALSE, 
+			DEFAULT_CHARSET, // The char's we have in our font HEBREW_CHARSET for a hebrew font.
+			OUT_DEFAULT_PRECIS, // Lets windows find the font that best matches my request. I can use other values to tell it my priorities.
+			CLIP_DEFAULT_PRECIS, // Same idea but with clipping (clipping - where it is allowed to draw the chars. Different values say dont darw at all if its not in ad others).  
+			CLEARTYPE_QUALITY, // Simular idea.
+			FF_MODERN, // The family of fonts we choose from (i.e. modern, roman, old english...)
+			L"font of score" /*name of font*/); // for more info .https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-createfonta.
+	
+	// If the font failed to create we send a message and leave the function.
+	if (!my_font) {
+		MessageBox(global_cur_win, L"Failed To Create Font.", L"ERROR", MB_OK | MB_ICONERROR);
+		return;
+	}
+
+	// We select the new font on to the hdc. We save the old font so we can put it back together with hdc.
+	HFONT old_font = (HFONT)SelectObject(hdc, my_font);
+
+	// We create the text that we will be printing on the screen.
+	wchar_t text[256];
+	swprintf_s(text, sizeof(text) / sizeof(wchar_t), L"current score: %u", score);
+
+	// We print out the text we want to in its spot.
+	TextOut(hdc, cell_size * (GRID_W + 2), cell_size, text, (int)wcslen(text));
+	
+	// We print the bigger one between our current score and the high score.
+	UINT high_score_print;
+	if (high_score < score) {
+		high_score_print = score;
+	}
+	else {
+		high_score_print = high_score;
+	}
+
+	// Same thing but we print the high score under.
+	wchar_t high_score_text[256];
+	swprintf_s(high_score_text, sizeof(high_score_text) / sizeof(wchar_t), L"high score: %u", high_score_print);
+	TextOut(hdc, cell_size * (GRID_W + 2), cell_size * 2, high_score_text, (int)wcslen(high_score_text));
+
+	// We repair the old font with hdc and now we can delete the one we created.
+	SelectObject(hdc, old_font);
+	DeleteObject(my_font);
+}
+
+// Gets the path to the file of the high score.
+static BOOL get_high_score_file_path(wchar_t* path) {
+	// We get the file path of the .exe into path. If failed (code 0) return false.
+	if (GetModuleFileName(NULL, path, MAX_PATH) == 0) {
+		return FALSE;
+	}
+
+	// We go back to the begining of the .exe file that is runing, earase it and replace with the path of the highsocre file.
+	int i = (int)wcslen(path);
+	// While we arent at the begginig of the path and we didnt make it to \\ yet, meaning we didnt make it to the beggining of the .exe.
+	while (i >= 0 && path[i] != L'\\') {
+		i--;
+	}
+	// We cut off the string after the .exe ends so we get rid of that part of the path.
+	path[i + 1] = L'\0';
+	// We use the .dat ending so we cant just edit the file(if .txt) to give a big number as the max which is just a lie.
+	wcscat_s(path, MAX_PATH, L"high_score.dat");
+
+	return TRUE;
+}
+
+// Sets the high score to the value we get.
+static void set_high_score() {
+	// We get the path and make sure it was found.
+	wchar_t path[MAX_PATH];
+
+	// If we failed ro get the file path.
+	if (!get_high_score_file_path(path)) {
+		MessageBox(NULL, L"Failed To Get File Path", L"ERROR", MB_OK | MB_ICONERROR);
+	}
+	
+	// Same as get_high score but we open for writing instead of reading.
+	HANDLE h_file =
+		CreateFile(path, // Path to the file we are creating/opening
+			GENERIC_WRITE, // We open the file for reading.
+			0, // This deals with sharing which we dont have.
+			NULL, // Security stuff for child processes, its optional and we dont need it.
+			CREATE_ALWAYS, // We open the file if it exists if not we create it.
+			FILE_ATTRIBUTE_HIDDEN, // Hides the file so the user doesnt tamper with by accident. It can be viewed if see hidden files is on.
+			NULL); // Again has to do with security and encription which we dont need.
+
+	// If the file failed to open so we can save the high score we send an error message.
+	if (h_file == INVALID_HANDLE_VALUE) {
+		MessageBox(NULL, L"Failed To Save High Score.", L"ERROR", MB_OK | MB_ICONERROR);
+		return;
+	}
+
+	// Same logic as get_high_score but here we write.
+	DWORD num_of_bytes_writen = 0;
+	if (!WriteFile(h_file, &high_score, sizeof(high_score), &num_of_bytes_writen, NULL)) {
+		MessageBox(NULL, L"Failed To Write High Score.", L"ERROR", MB_OK | MB_ICONERROR);
+	}
+	if (num_of_bytes_writen != sizeof(high_score)) {
+		MessageBox(NULL, L"Failed To Write High Score.", L"ERROR", MB_OK | MB_ICONERROR);
+	}
+
+	// Realse the mem.
+	CloseHandle(h_file);
+}
+
+// A function that gets the high score from the file and puts it into the global var high_score.
+static void get_high_score() {
+	// We get the path and make sure it was found.
+	wchar_t path[MAX_PATH];
+
+	// If we failed to get the file path.
+	if (!get_high_score_file_path(path)) {
+		MessageBox(NULL, L"Failed To Get File Path", L"ERROR", MB_OK | MB_ICONERROR);
+	}
+
+	// We create the file if it didnt exist and if it did we open it.
+	HANDLE h_file =
+		CreateFile(path, // Path to the file we are creating/opening
+			GENERIC_READ, // We open the file for reading.
+			0, // This deals with sharing which we dont have.
+			NULL, // Security stuff for child processes, its optional and we dont need it.
+			OPEN_ALWAYS, // We open the file if it exists if not we create it.
+			FILE_ATTRIBUTE_HIDDEN, // Hides the file so the user doesnt tamper with by accident. It can be viewed if see hidden files is on.
+			NULL); // Again has to do with security and encription which we dont need.
+
+	// If the file failed to open so we can get the high score we send an error message.
+	if (h_file == INVALID_HANDLE_VALUE) {
+		MessageBox(NULL, L"Failed To Get High Score.", L"ERROR", MB_OK | MB_ICONERROR);
+		return;
+	}
+
+	DWORD num_of_bytes_read = 0;
+	// If the read failed.
+	if (!ReadFile(h_file, &high_score, sizeof(high_score), &num_of_bytes_read, NULL)) {
+		MessageBox(NULL, L"Failed To Read High Score.", L"ERROR", MB_OK | MB_ICONERROR);
+		high_score = 0;
+	}
+
+	// If the number of bytes read is 0 that means we just created the file now(first run ever) so we set high socre to 0 with no error.
+	if (num_of_bytes_read == 0) {
+		high_score = 0;
+	}
+	// If the number of bytes we read was not the amount that should have been put in meaning the data was currupted.
+	else if (num_of_bytes_read != sizeof(high_score)) {
+		MessageBox(NULL, L"Failed To Read High Score.", L"ERROR", MB_OK | MB_ICONERROR);
+		high_score = 0;
+	}
+
+	// We realese the mem we used.
+	CloseHandle(h_file);
 }

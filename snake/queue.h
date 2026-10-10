@@ -14,7 +14,7 @@ typedef struct {
 // max - max size of the queue, 0 for default(100).
 // size - the current amount of elements that we are putting in, meaning amount of items in data. 0 for not putting in now.
 // head - the current spot in data to count as the first element, 0 for all of data goes into queue.
-queue create_queue(void* data, UINT type_size, UINT max, UINT size, UINT head);
+queue create_queue(const void* data, const UINT type_size, const UINT max, const UINT size, const UINT head);
 
 void copy(const void* from, void* into, const size_t type_size); // copys from var to var.
 
