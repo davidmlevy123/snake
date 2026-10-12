@@ -8,6 +8,8 @@ IDI_MAIN_SNAKE_LOGO ICON "main_snake_icon.ico"
 // Assosiate the number to the file.
 IDC_SNAKE_CURSOR CURSOR "cobra.cur"
 
+// We give meaning to the id of the snake head as teh bitmap we have with the snakes head.
+IDB_SNAKE_HEAD BITMAP "snake_head.bmp"
 
 // The menu's code.
 IDR_MAIN_MENU MENU 

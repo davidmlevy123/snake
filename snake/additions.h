@@ -12,6 +12,9 @@
 #define LIGHTBLUEBK 6
 #define VIOLETBK 7
 
+// Bitmaps.
+#define IDB_SNAKE_HEAD 25
+
 // We define each icon and we chose numbers that dont currently have a icon.
 #define IDI_SNAKE_LOGO 101
 #define IDI_MAIN_SNAKE_LOGO 102
@@ -41,7 +44,7 @@
 #define ID_HIDE_DIALOG 502
 
 // Directions 
-#define UP 0
+#define UP 4
 #define RIGHT 1
 #define DOWN 2
 #define LEFT 3
@@ -63,3 +66,7 @@
 #define NOT_STARTED 0
 #define GAME_STARTED 1
 #define GAME_OVER 2
+
+// IDs for buttons.
+#define ID_START_BUTTON_MAIN 1500
+

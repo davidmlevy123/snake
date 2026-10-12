@@ -2,32 +2,19 @@
 #include <tchar.h>
 #include "additions.h" // The additions i created.
 #include "queue.h" 
+#include "Snake.h"
 
 const wchar_t class_name[] = L"Main Window.";
 const wchar_t window_name[] = L"Snake";
 
-// Create a struck that has the snake. It is a global struct
-typedef struct {
-	// We creata an queue of points that has a length of 3(we will have the snake size at 3 for now).
-	queue snake;
-	UINT length;
-	UINT cur_direction; // The current direction is UP=0,RIGHT=1,DOWN=2,LEFT=3.
-}Snake;
+
 // We create our actual snake, in c we cant give default values so we need to give the values when we define it.
 Snake my_snake = { .length = 3 , .cur_direction = RIGHT };
 static void set_snake_start_points(){
 	// Distroy the snake if one still exists and has not been destroyed.
 	destroy_queue(&my_snake.snake);
-	my_snake.length = 3;
-	my_snake.cur_direction = RIGHT;
-
-	POINT start_points[3];
-	// We have to do this becasue my_snake.length is a UINT meaning it cant have negitive.
-	for (int i = 0; i < (int)my_snake.length; ++i){
-		start_points[i].x = (my_snake.length - 1 - i) + 1;
-		start_points[i].y = 0;
-	}
-	my_snake.snake = create_queue(start_points, sizeof(POINT), 50, my_snake.length, 0);
+	// We create the snake with the default points (passing NULL).
+	my_snake = create_snake(3, RIGHT, NULL, 50);
 }
 
 // A queue that has the buttons pressed so we can do them on their time. If we dont have it its possible to do 2 moves per tick breaking the game.
@@ -54,6 +41,9 @@ HWND global_cur_win;
 // We make it global so we can save if the dialog is up.
 HWND handle_to_settings = NULL;
 
+// a handle to the button taht starts the game.
+HWND start_button;
+
 // The bool to know if we should draw the smiley face in the WM_PAINT.
 BOOL draw_face = FALSE;
 
@@ -71,6 +61,14 @@ UINT cur_timer_speed = 100;
 // We get the font for drawing the game score and high score.
 HFONT font_for_drawing = NULL;
 
+// A brush that has the snake head bitmap to use loded in it.
+HBRUSH snake_head_brush = NULL;
+// The bitmap with the snake head in it.
+HBITMAP snake_head_bitmap = NULL;
+// hight and width of the snake head bitmap. 
+int snake_head_bitmap_h = 0;
+int snake_head_bitmap_w = 0;
+
 // A int that holds the state of our random numbers.
 static unsigned long long random_seed = 1;
 
@@ -85,13 +83,10 @@ static void Eyes(HDC hdc);
 static void Head(HDC hdc);
 static void Mouth(HDC hdc);
 static void smiley_face(HDC hdc);
-static BOOL is_valid_turn(const UINT new_direction, const Snake* s);
 static void queue_direction_if_valid(const UINT new_direction);
 static void set_up_rand();
 static int full_range_ran();
 static int my_rand(const int a, const int b); // Gets a random number in between a and b.
-static BOOL point_on_snake(const POINT* p, const Snake* s, const UINT start_index); 
-static BOOL is_snake_head(const POINT* p, const Snake* s);
 static void start_game(const HWND key_of_window);
 static BOOL create_my_font(HFONT* to_create, HWND hwnd);
 static void print_game_score(HDC hdc, const int cell_size, HFONT my_font);
@@ -100,6 +95,8 @@ static void set_high_score();
 static void get_high_score();
 static int get_cell_size(HWND key_of_window);
 static void invalidate_cell(HWND hwnd, const POINT* cell, const int cell_size);
+static void start_button_set_up(HWND parent_window, HWND* button);
+static void draw_snake_head(HDC hdc, const RECT* cell);
 
 int WINAPI wWinMain(HINSTANCE handle_of_instance, HINSTANCE not_needed, PWSTR command_line, int flag_min_max_normal) {//PWSTR=wchar_t*.
 	global_hInstance = handle_of_instance;
@@ -331,6 +328,21 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 					}
 					// We want to call the function to change the background in WM_PAINT.
 					InvalidateRect(key_of_window, NULL, TRUE);
+					break;
+				}
+
+				// If the start button was pressed.
+				case ID_START_BUTTON_MAIN: {
+					switch (HIWORD(wParam)) {
+						// If the button was pressed.
+						case BN_CLICKED: {
+							// We hide the button. We only destroy in WM_DESTROY because we need to have it there if the button wasnt pressed, so we just out it only there to make it simpler.
+							ShowWindow(start_button, SW_HIDE);
+							InvalidateRect(key_of_window, NULL, TRUE);
+							start_game(key_of_window);
+						}
+					}
+					break;
 				}
 			}
 			break;
@@ -379,19 +391,34 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 				// Creating the snake and giving him a colour. If the background is green we make him black so we can see him, if its red the apples are green so we agian make the snake black.
 				if (bk_colour == GREENBK || bk_colour == LIGHTGREENBK || bk_colour == REDBK) {
 					HBRUSH black = CreateSolidBrush(RGB(0, 0, 0));
-					for (int i = 0; i < (int)my_snake.length; ++i) {
+					// We start at the second spot so we can make the head a different type.
+					for (int i = 1; i < (int)my_snake.length; ++i) {
 						RECT block;
-						block.left = (((POINT*)place(&my_snake.snake, i))->x) * cell_size + 1;
-						block.top = (((POINT*)place(&my_snake.snake, i))->y) * cell_size + 1;
+						POINT* cur_place = ((POINT*)place(&my_snake.snake, i));
+						block.left = (cur_place->x) * cell_size + 1;
+						block.top = (cur_place->y) * cell_size + 1;
 						block.right = block.left + cell_size - 2;
 						block.bottom = block.top + cell_size - 2;
 						FillRect(hdc, &block, black);
 					}
+
+					// Same idea as in the else.
+					RECT head_to_colour;
+					POINT* head_point = (POINT*)front(&my_snake.snake);
+					head_to_colour.left = head_point->x * cell_size + 1;
+					head_to_colour.top = head_point->y * cell_size + 1;
+					head_to_colour.right = head_to_colour.left + cell_size - 2;
+					head_to_colour.bottom = head_to_colour.top + cell_size - 2;
+					// We call the functionn that draws the head with the snake bitmap.
+					draw_snake_head(hdc, &head_to_colour);
+
+					// We delete the HBRUSH we created.
 					DeleteObject(black);
 				}
 				else {
 					HBRUSH green = CreateSolidBrush(RGB(0, 255, 0));
-					for (int i = 0; i < (int)my_snake.length; ++i) {
+					// Same idea as the if 
+					for (int i =1; i < (int)my_snake.length; ++i) {
 						RECT block;
 						block.left = (((POINT*)place(&my_snake.snake, i))->x) * cell_size + 1;
 						block.top = (((POINT*)place(&my_snake.snake, i))->y) * cell_size + 1;
@@ -399,6 +426,15 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 						block.bottom = block.top + cell_size - 2;
 						FillRect(hdc, &block, green);
 					}
+
+					RECT head_to_colour;
+					POINT* head_point = (POINT*)front(&my_snake.snake);
+					head_to_colour.left = head_point->x * cell_size + 1;
+					head_to_colour.top = head_point->y * cell_size + 1;
+					head_to_colour.right = head_to_colour.left + cell_size - 2;
+					head_to_colour.bottom = head_to_colour.top + cell_size - 2;
+					draw_snake_head(hdc, &head_to_colour);
+
 					DeleteObject(green);
 				}
 
@@ -543,10 +579,33 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 		case WM_CREATE: {
 			// For WM_CREATE the lParam hold the info about the window mainly(what we need) the style.
 			CREATESTRUCT* create_info = (CREATESTRUCT*)lParam;
-			// If the window we are at now isnt a child, we get the high score of the game. It is only needed once per run and is cleaner here than in the main.
-			if (!(create_info->style & WS_CHILD)) {
-				get_high_score();
+			// If the window we are at now is a child, we dont do any of the other stuff so we break.
+			if ((create_info->style & WS_CHILD)) {
+				break;
 			}
+
+			// We get the high score of the game.It is only needed once per run and is cleaner here than in the main.
+			get_high_score();
+
+			// We get the start button up and running to sart the game. We only do it for the main window and not the child.
+			start_button_set_up(key_of_window, &start_button);
+
+			// We create a handle to the bitmap with the snake head image.
+			snake_head_bitmap = LoadBitmap(global_hInstance, MAKEINTRESOURCE(IDB_SNAKE_HEAD));
+			// If it failed to create we send the error message and leave.
+			if (snake_head_bitmap == NULL) {
+				MessageBox(key_of_window, L"Failed To Load Snake Head Bitmap", L"ERROR", MB_OK | MB_ICONERROR);
+				break;
+			}
+			BITMAP snake_head_info;
+			// Gets the info about the snake_head bitmap. 
+			GetObject(snake_head_bitmap, sizeof(BITMAP), &snake_head_info);
+			// We get the hight and width for the snake head bitmap.
+			snake_head_bitmap_h = snake_head_info.bmHeight;
+			snake_head_bitmap_w = snake_head_info.bmWidth;
+
+			// We create a brush with that bitmap as its pattern.
+			snake_head_brush = CreatePatternBrush(snake_head_bitmap);
 			return 0;
 		}
 
@@ -562,6 +621,14 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 
 			// We delete the font we created for writing the current and high score.
 			DeleteObject(font_for_drawing);
+
+			// We destroy the button for starting the game.
+			DestroyWindow(start_button);
+
+			// We delete the brush we used for drawing the snake head in the end.
+			DeleteObject(snake_head_brush);
+			// We delete the handle to the bitmap with the snake head in it
+			DeleteObject(snake_head_bitmap);
 
 			// If the case is to leave we end the program and window. We need the PostQuitMessage becasue if we dont have it the function will return 0 without closing the window.
 			PostQuitMessage(0);
@@ -722,6 +789,8 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 					SetTimer(key_of_window, IDT_TIMER1, cur_timer_speed, NULL);
 
 					invalidate_cell(key_of_window, cur_spot, cell_size);
+					// We invalidate the cell behind teh head because the head has a different style.
+					invalidate_cell(key_of_window, (POINT*)place(&my_snake.snake, 1), cell_size);
 					invalidate_cell(key_of_window, &to_add, cell_size);
 
 					break;
@@ -781,6 +850,8 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 					// If he choose not to we go back to main screen.
 					else {
 						game_state = NOT_STARTED;
+						// We bring back the start button whenwe are in the main scree.
+						ShowWindow(start_button, SW_SHOW);
 						InvalidateRect(key_of_window, NULL, TRUE);
 					}
 
@@ -1172,27 +1243,6 @@ static void smiley_face(HDC hdc) {
 	Mouth(hdc);
 }
 
-static BOOL is_valid_turn(const UINT new_direction, const Snake* s) {
-	// If its the same direction or oppisate directoin(distance of 2 loop around values).
-	if (new_direction == s->cur_direction || new_direction == (s->cur_direction + 2) % 4) {
-		return FALSE;
-	}
-	POINT* p = (POINT*)(front(&s->snake));
-	if (new_direction == UP && (p->y <= 0)) {
-		return FALSE;
-	}
-	if (new_direction == DOWN && (p->y >= GRID_H - 1)) {
-		return FALSE;
-	}
-	if (new_direction == RIGHT && (p->x >= GRID_W - 1)) {
-		return FALSE;
-	}
-	if (new_direction == LEFT && (p->x <= 0)) {
-		return FALSE;
-	}
-	return TRUE;
-}
-
 // Puts a direction in the queue if it is going to be a valid direction when its turn comes up.
 static void queue_direction_if_valid(const UINT new_direction) {
 	UINT cur = my_snake.cur_direction;
@@ -1227,22 +1277,6 @@ static int full_range_ran() {
 
 static int my_rand(const int a, const int b) {
 	return a + (full_range_ran() % (b - a + 1));
-}
-
-static BOOL point_on_snake(const POINT* p, const Snake* s, const UINT start_index) {
-	// We go over the snake segments one by one checking if its the smae as p.
-	for (int i = start_index; i < (int)s->length; ++i) {
-		POINT* cur_snake_spot = (POINT*)(place(&s->snake, i));
-		if (p->x == cur_snake_spot->x && p->y == cur_snake_spot->y) {
-			return TRUE;
-		}
-	}
-	return FALSE;
-}
-
-static BOOL is_snake_head(const POINT* p, const Snake* s) {
-	POINT* snake_head = front(&s->snake);
-	return ((p->x == snake_head->x) && (p->y == snake_head->y));
 }
 
 // Gets the game ready for starting.
@@ -1473,4 +1507,49 @@ static void invalidate_cell(HWND hwnd, const POINT* cell, const int cell_size) {
 
 	// We send it to be filled in.
 	InvalidateRect(hwnd, &to_fill, FALSE);
+}
+
+// Gets the start button ready to be shown.
+static void start_button_set_up(HWND parent_window, HWND* button) {
+	RECT client_area;
+	GetClientRect(parent_window, &client_area);
+	int width = (client_area.right - client_area.left) / 7;
+	int hight = (client_area.bottom - client_area.top) / 7;
+	int x = (client_area.right) / 2 - 3 * width / 4;
+	int y = (client_area.bottom - hight) / 2;
+
+	// We create a big start game button.
+	*button = CreateWindowEx(WS_EX_OVERLAPPEDWINDOW, L"BUTTON", L"start game", WS_VISIBLE | WS_CHILD | WS_TABSTOP | BS_PUSHBUTTON, x, y, width, hight, parent_window, (HMENU)ID_START_BUTTON_MAIN, global_hInstance, NULL);
+
+}
+
+// Function that draws the snake head with our bitmap. 
+static void draw_snake_head(HDC hdc, const RECT* cell) {
+	// If the snake heads bitmap failed to load its null so we just return.
+	if (snake_head_bitmap == NULL) {
+		return;
+	}
+	// We create a memory DC that is compatable with our screen DC.
+	HDC mem_dc = CreateCompatibleDC(hdc);
+
+	// We put the bitmap into the memory DC and save the old one so we can put it back.
+	HBITMAP save_old = (HBITMAP)SelectObject(mem_dc, snake_head_bitmap);
+
+	// Makes the bitmap look good when shrinking.
+	SetStretchBltMode(hdc, HALFTONE);
+	// We reset the brush origion.
+	SetBrushOrgEx(hdc, 0, 0, NULL);
+
+	// We copy the bitmap into the cell taht is the head.
+	StretchBlt(hdc,
+		cell->left, cell->top, cell->right - cell->left, cell->bottom - cell->top, // Destanation x, y, width and hight. 
+		mem_dc, 0, 0,
+		snake_head_bitmap_w, snake_head_bitmap_h, // We load the whole bitmap, its whole width and whole hight.
+		SRCCOPY /*copy the pixles normally*/);
+
+	// Reput the old default back in.
+	SelectObject(mem_dc, save_old);
+
+	// We delete the memory DC we created.
+	DeleteDC(mem_dc);
 }
