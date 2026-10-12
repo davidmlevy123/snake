@@ -68,6 +68,9 @@ UINT high_score = 0;
 // The time of a tick in the game, meaning the speed of the snake.
 UINT cur_timer_speed = 100;
 
+// We get the font for drawing the game score and high score.
+HFONT font_for_drawing = NULL;
+
 // A int that holds the state of our random numbers.
 static unsigned long long random_seed = 1;
 
@@ -90,10 +93,13 @@ static int my_rand(const int a, const int b); // Gets a random number in between
 static BOOL point_on_snake(const POINT* p, const Snake* s, const UINT start_index); 
 static BOOL is_snake_head(const POINT* p, const Snake* s);
 static void start_game(const HWND key_of_window);
-static void print_game_score(HDC hdc, const int cell_size);
+static BOOL create_my_font(HFONT* to_create, HWND hwnd);
+static void print_game_score(HDC hdc, const int cell_size, HFONT my_font);
 static BOOL get_high_score_file_path(wchar_t* path);
 static void set_high_score();
 static void get_high_score();
+static int get_cell_size(HWND key_of_window);
+static void invalidate_cell(HWND hwnd, const POINT* cell, const int cell_size);
 
 int WINAPI wWinMain(HINSTANCE handle_of_instance, HINSTANCE not_needed, PWSTR command_line, int flag_min_max_normal) {//PWSTR=wchar_t*.
 	global_hInstance = handle_of_instance;
@@ -354,17 +360,7 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 			else if (game_state == GAME_STARTED) {
 				
 				// We get the game dimentions.
-				RECT screen_size;
-				GetClientRect(key_of_window, &screen_size);
-				int cell_w = screen_size.right / GRID_W;
-				int cell_h = screen_size.bottom / GRID_H;
-				int cell_size;
-				if (cell_w > cell_h) {
-					cell_size = cell_h;
-				}
-				else {
-					cell_size = cell_w;
-				}
+				int cell_size = get_cell_size(key_of_window);
 
 				// Setting an outline for the game area.
 				if (bk_colour == BLACKBK) {
@@ -385,10 +381,10 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 					HBRUSH black = CreateSolidBrush(RGB(0, 0, 0));
 					for (int i = 0; i < (int)my_snake.length; ++i) {
 						RECT block;
-						block.left = (((POINT*)place(&my_snake.snake, i))->x) * cell_size;
-						block.top = (((POINT*)place(&my_snake.snake, i))->y) * cell_size;
-						block.right = block.left + cell_size;
-						block.bottom = block.top + cell_size;
+						block.left = (((POINT*)place(&my_snake.snake, i))->x) * cell_size + 1;
+						block.top = (((POINT*)place(&my_snake.snake, i))->y) * cell_size + 1;
+						block.right = block.left + cell_size - 2;
+						block.bottom = block.top + cell_size - 2;
 						FillRect(hdc, &block, black);
 					}
 					DeleteObject(black);
@@ -397,10 +393,10 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 					HBRUSH green = CreateSolidBrush(RGB(0, 255, 0));
 					for (int i = 0; i < (int)my_snake.length; ++i) {
 						RECT block;
-						block.left = (((POINT*)place(&my_snake.snake, i))->x) * cell_size;
-						block.top = (((POINT*)place(&my_snake.snake, i))->y) * cell_size;
-						block.right = block.left + cell_size;
-						block.bottom = block.top + cell_size;
+						block.left = (((POINT*)place(&my_snake.snake, i))->x) * cell_size + 1;
+						block.top = (((POINT*)place(&my_snake.snake, i))->y) * cell_size + 1;
+						block.right = block.left + cell_size - 2;
+						block.bottom = block.top + cell_size - 2;
 						FillRect(hdc, &block, green);
 					}
 					DeleteObject(green);
@@ -429,7 +425,7 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 				}
 				
 				// We call the function that prints our game score.
-				print_game_score(hdc, cell_size);
+				print_game_score(hdc, cell_size, font_for_drawing);
 			}
 
 			// We must end the painting.
@@ -446,6 +442,14 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 		// If the user is done resizing.
 		case WM_SIZE:
 		{
+			LONG_PTR style;
+			// We only create for the parent window not child.
+			if (!((style = GetWindowLongPtr(key_of_window, GWL_STYLE)) & WS_CHILD))
+			{
+				// We create the font we use to write the game score and high score. We do it here so we dont end up creating it a lot of times. Deleted in WM_DESTROY.
+				create_my_font(&font_for_drawing, key_of_window);
+			}
+
 			InvalidateRect(key_of_window, NULL, TRUE);
 			break;
 		}
@@ -556,6 +560,9 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 			destroy_queue(&my_snake.snake);
 			destroy_queue(&buttons_pressed);
 
+			// We delete the font we created for writing the current and high score.
+			DeleteObject(font_for_drawing);
+
 			// If the case is to leave we end the program and window. We need the PostQuitMessage becasue if we dont have it the function will return 0 without closing the window.
 			PostQuitMessage(0);
 			return 0;
@@ -566,6 +573,8 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 			switch (wParam) {
 				// The timer for moving the snake went off.
 				case IDT_TIMER1: {
+					// We get the cell size for updating the areas of screen that were updated (score, head cell, tail cell and maybe high score).
+					int cell_size = get_cell_size(key_of_window);
 
 					// We set the snake to move in next direction.
 					int next_direction = my_snake.cur_direction;
@@ -590,15 +599,7 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 						*cur = *prev;
 					}
 
-					// If the snake is in the same spot as the apple.
-					if (apple.apple_draw && is_snake_head(&apple.apple,&my_snake)) {
-						if (push(&my_snake.snake, &to_add)) {
-							my_snake.length++;
-						}
-						apple.apple_draw = FALSE;
-						score++;
-					}
-
+					// Moves head to correct spot.
 					switch (my_snake.cur_direction) {
 						case UP: {
 							// If we made it to the top of the screen.
@@ -679,6 +680,25 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 						}// default
 					}// switch (my_snake.cur_direction)
 					
+					// If the snake is in the same spot as the apple.
+					if (apple.apple_draw && is_snake_head(&apple.apple, &my_snake)) {
+						if (push(&my_snake.snake, &to_add)) {
+							my_snake.length++;
+						}
+						apple.apple_draw = FALSE;
+						score++;
+						
+						// Update the score and high score box after eating the apple. (If score>=high score we update it too).
+						RECT score_spot;
+						score_spot.left = cell_size * (GRID_W + 2);
+						// We go 15 cells from where the score started because the score is more than one cell and depends on the number there so we do 15 just in case.
+						score_spot.right = score_spot.left + cell_size * 15;
+						score_spot.top = cell_size;
+						// We go down 2 cells to update the score and the high score (might not change but again ust in case score>high_score).
+						score_spot.bottom = cell_size * 3;
+						InvalidateRect(key_of_window, &score_spot, FALSE);
+					}
+
 					// After we moved the head we check if it hits any of the other points on the snake ending the game. We start at 1 becasue 0 is the head.
 					if (point_on_snake(cur_spot, &my_snake, 1)) {
 						// We kill the timers so the game doesnt run in the background just that w edont see it.
@@ -701,12 +721,22 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 					// We reset the timer with the cur tick speed it gets changed in the timer for tick speed.
 					SetTimer(key_of_window, IDT_TIMER1, cur_timer_speed, NULL);
 
-					InvalidateRect(key_of_window, NULL, TRUE);
+					invalidate_cell(key_of_window, cur_spot, cell_size);
+					invalidate_cell(key_of_window, &to_add, cell_size);
+
 					break;
 				}// case IDT_TIMER1
 
 				// If the apple timer went off.
 				case IDT_TIMER_FOR_APPLE: {
+					// We get the cell size so we can update the cells that the apple ent into and remove previous one if needed.
+					int cell_size = get_cell_size(key_of_window);
+
+					// If we have an apple on screen now we update the spot to remove the apple.
+					if (apple.apple_draw == TRUE) {
+						apple.apple_draw = FALSE;
+						invalidate_cell(key_of_window, &apple.apple, cell_size);
+					}
 
 					// We get random numbers and if they are on the snake we get new ones becasue we dont want the apple on the snake.
 					do {
@@ -714,7 +744,11 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 						apple.apple.y = my_rand(0, GRID_H - 1);
 					} while (point_on_snake(&apple.apple, &my_snake, 0));
 
+					// We update the spot the new apple is in.
+					invalidate_cell(key_of_window, &apple.apple, cell_size);
+
 					apple.apple_draw = TRUE;
+
 					// We reset the timer with a new random time for the apple.
 					SetTimer(key_of_window, IDT_TIMER_FOR_APPLE, my_rand(1000, 5000), NULL);
 					break;
@@ -1243,27 +1277,40 @@ static void start_game(const HWND key_of_window) {
 	InvalidateRect(key_of_window, NULL, TRUE);
 }
 
-// Prints the current score of game onto the screen.
-static void print_game_score(HDC hdc, const int cell_size) {
-	int font_size = -(cell_size);
-	HFONT my_font =
-		CreateFont(-30, // cHeight - the height of the character if negative. If positive the height of the cell that the char is in so char size would be a bit smaller and for 0 the default for that font.
+static BOOL create_my_font(HFONT* to_create, HWND hwnd) {
+	int cell_size = get_cell_size(hwnd);
+	int font_size = -(cell_size * 3 / 4);
+
+	// If we have already created it and we want to recreate beacuase the widow size was changed.
+	if (*to_create) {
+		DeleteObject(*to_create);
+		*to_create = NULL;
+	}
+
+	// We create the actual font.
+	*to_create =
+		CreateFont(font_size, // cHeight - the height of the character if negative. If positive the height of the cell that the char is in so char size would be a bit smaller and for 0 the default for that font.
 			0, 0, 0,
 			FW_ULTRABOLD, // Font type (i.e. normal, bold, light, super bold...)
-			FALSE, FALSE, FALSE, 
+			FALSE, FALSE, FALSE,
 			DEFAULT_CHARSET, // The char's we have in our font HEBREW_CHARSET for a hebrew font.
 			OUT_DEFAULT_PRECIS, // Lets windows find the font that best matches my request. I can use other values to tell it my priorities.
 			CLIP_DEFAULT_PRECIS, // Same idea but with clipping (clipping - where it is allowed to draw the chars. Different values say dont darw at all if its not in ad others).  
 			CLEARTYPE_QUALITY, // Simular idea.
 			FF_MODERN, // The family of fonts we choose from (i.e. modern, roman, old english...)
 			L"font of score" /*name of font*/); // for more info .https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-createfonta.
-	
+
 	// If the font failed to create we send a message and leave the function.
-	if (!my_font) {
+	if (!(*to_create)) {
 		MessageBox(global_cur_win, L"Failed To Create Font.", L"ERROR", MB_OK | MB_ICONERROR);
-		return;
+		return FALSE;
 	}
 
+	return TRUE;
+}
+
+// Prints the current score of game onto the screen.
+static void print_game_score(HDC hdc, const int cell_size, HFONT my_font) {
 	// We select the new font on to the hdc. We save the old font so we can put it back together with hdc.
 	HFONT old_font = (HFONT)SelectObject(hdc, my_font);
 
@@ -1290,7 +1337,6 @@ static void print_game_score(HDC hdc, const int cell_size) {
 
 	// We repair the old font with hdc and now we can delete the one we created.
 	SelectObject(hdc, old_font);
-	DeleteObject(my_font);
 }
 
 // Gets the path to the file of the high score.
@@ -1398,4 +1444,33 @@ static void get_high_score() {
 
 	// We realese the mem we used.
 	CloseHandle(h_file);
+}
+
+// A function to get the cell size for our current window size.
+static int get_cell_size(HWND key_of_window) {
+	RECT screen_size;
+	GetClientRect(key_of_window, &screen_size);
+	int cell_w = screen_size.right / GRID_W;
+	int cell_h = screen_size.bottom / GRID_H;
+	int cell_size;
+	if (cell_w > cell_h) {
+		cell_size = cell_h;
+	}
+	else {
+		cell_size = cell_w;
+	}
+	return cell_size;
+}
+
+// Updates one cell on the window instead of a whole window.
+static void invalidate_cell(HWND hwnd, const POINT* cell, const int cell_size) {
+	RECT to_fill;
+	// We create the rect that we fill in.
+	to_fill.left = cell->x * cell_size;
+	to_fill.top = cell->y * cell_size;
+	to_fill.right = to_fill.left + cell_size;
+	to_fill.bottom = to_fill.top + cell_size;
+
+	// We send it to be filled in.
+	InvalidateRect(hwnd, &to_fill, FALSE);
 }
