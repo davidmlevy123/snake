@@ -1,6 +1,7 @@
 ﻿#include <windows.h>
 #include <tchar.h>
-#include "additions.h" // The additions i created.
+#include "additions.h" // The additions i created
+#include "resource.h"
 #include "queue.h" 
 #include "Snake.h"
 
@@ -1635,7 +1636,7 @@ static void game_modes_button_set_up(HWND parent_window, HWND* left_button, HWND
 // Converts UINT value into the correct game mode to print
 static wchar_t* button_int_to_words(UINT val) {
 	// We undo the removing of 3000 in change_game_mode() that helped us with going to spots in arrays.
-	val += 3000;
+	val += ID_CLASSIC;
 	switch (val) {
 		case ID_CLASSIC: {
 			return L"classic";
@@ -1673,15 +1674,13 @@ static void change_game_mode(HWND parent_window, HWND* main_button, UINT new_mod
 		MessageBox(parent_window, L"Invalid Game Mode", L"ERROR", MB_OK | MB_ICONERROR);
 		return;
 	}
-	// We take 3000 off because the modes go from 3000-3005.
-	new_mode -= 3000;
 	// We hide the window that had the previous button.
 	ShowWindow(*main_button, SW_HIDE);
 
-	// If we have already been on this game mode, meaning it has already been opened in the past, we can just unhide it.
-	if (game_mode_windows[new_mode]) {
-		ShowWindow(game_mode_windows[new_mode], SW_SHOW);
-		cur_game_mode = game_mode_windows[new_mode];
+	// If we have already been on this game mode, meaning it has already been opened in the past, we can just unhide it. We remove ID_CLASSIC every time we index to get the exact value for an index.
+	if (game_mode_windows[new_mode - ID_CLASSIC]) {
+		ShowWindow(game_mode_windows[new_mode - ID_CLASSIC], SW_SHOW);
+		cur_game_mode = game_mode_windows[new_mode - ID_CLASSIC];
 		// We are done with this function because we changed the window.
 		return;
 	}
@@ -1705,7 +1704,7 @@ static void change_game_mode(HWND parent_window, HWND* main_button, UINT new_mod
 	HWND new_button = NULL;
 	new_button = CreateWindowEx(WS_EX_OVERLAPPEDWINDOW, L"BUTTON", game_mode, WS_VISIBLE | WS_CHILD | WS_TABSTOP | BS_PUSHBUTTON, x, 3 * y / 4, width, 2 * hight, parent_window, (HMENU)(UINT_PTR)new_mode, global_hInstance, NULL);
 	// We save the button as created in the array and update our current game mode.
-	game_mode_windows[new_mode] = new_button;
+	game_mode_windows[new_mode - ID_CLASSIC] = new_button;
 	cur_game_mode = new_button;
 }
 

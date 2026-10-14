@@ -1,5 +1,5 @@
 #include <windows.h>
-#include "additions.h"
+#include "resource.h"
 
 // We give meaning to the defanition (assosiate it with the correct file).
 IDI_SNAKE_LOGO ICON "snake_icon.ico"

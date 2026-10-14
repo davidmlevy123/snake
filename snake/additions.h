@@ -12,48 +12,11 @@
 #define LIGHTBLUEBK 6
 #define VIOLETBK 7
 
-// Bitmaps.
-#define IDB_SNAKE_HEAD 25
-
-// We define each icon and we chose numbers that dont currently have a icon.
-#define IDI_SNAKE_LOGO 101
-#define IDI_MAIN_SNAKE_LOGO 102
-
-// Cursors.
-#define IDC_SNAKE_CURSOR 150
-
-// We define a menu. We chose numbers that dont have an ID on them.
-#define IDR_MAIN_MENU 200 
-
-// Controls in the menu.
-#define ID_FILE_EXIT 201
-#define ID_FILE_NEW_GAME 202
-#define ID_SETTINGS_HELP_OPEN 203
-#define ID_SETTINGS_BUG 204
-#define ID_SETTINGS_BK_COLOUR 205
-
-// Dialogs
-#define IDD_BASIC_DIALOG 400
-#define ID_START_GAME_BUTTON 401
-#define ID_CANCEL_DIALOG 402 
-#define ID_SCORE_DIALOG 403
-
-// Modeless dialogs
-#define IDD_MODELESS_DIALOG 500
-#define ID_HTP_MENU 501
-#define ID_HIDE_DIALOG 502
-
 // Directions 
 #define UP 4
 #define RIGHT 1
 #define DOWN 2
 #define LEFT 3
-
-// Timers
-#define IDT_TIMER1 1000
-#define IDT_TIMER_FOR_APPLE 1001
-#define IDT_TIMER_GAME_OVER 1002
-#define IDT_TIMER_TICK_SPEED 1003
 
 // Grid dimentions for game.
 #define GRID_W 30
@@ -67,11 +30,11 @@
 #define GAME_STARTED 1
 #define GAME_OVER 2
 
-// ID's for buttons.
-#define ID_START_BUTTON_MAIN 1500
-#define ID_SWITCH_GAME_MODE_LEFT 1501
-#define ID_SWITCH_GAME_MODE_RIGHT 1502
-#define ID_GAME_MODE_BUTTON 1503
+// Timers
+#define IDT_TIMER1 1000
+#define IDT_TIMER_FOR_APPLE 1001
+#define IDT_TIMER_GAME_OVER 1002
+#define IDT_TIMER_TICK_SPEED 1003
 
 // ID's for game modes
 #define ID_CLASSIC 3000
