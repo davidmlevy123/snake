@@ -41,8 +41,15 @@ HWND global_cur_win;
 // We make it global so we can save if the dialog is up.
 HWND handle_to_settings = NULL;
 
-// a handle to the button taht starts the game.
+// A handle to the button taht starts the game.
 HWND start_button;
+HWND move_game_mode_right;
+HWND move_game_mode_left;
+HWND cur_game_mode;
+HWND* game_mode_windows;
+
+// A global UINT that 
+UINT cur_game_mode_int = ID_CLASSIC;
 
 // The bool to know if we should draw the smiley face in the WM_PAINT.
 BOOL draw_face = FALSE;
@@ -85,18 +92,22 @@ static void Mouth(HDC hdc);
 static void smiley_face(HDC hdc);
 static void queue_direction_if_valid(const UINT new_direction);
 static void set_up_rand();
-static int full_range_ran();
-static int my_rand(const int a, const int b); // Gets a random number in between a and b.
+static int  full_range_ran();
+static int  my_rand(const int a, const int b); // Gets a random number in between a and b.
 static void start_game(const HWND key_of_window);
 static BOOL create_my_font(HFONT* to_create, HWND hwnd);
 static void print_game_score(HDC hdc, const int cell_size, HFONT my_font);
 static BOOL get_high_score_file_path(wchar_t* path);
 static void set_high_score();
 static void get_high_score();
-static int get_cell_size(HWND key_of_window);
+static int  get_cell_size(HWND key_of_window);
 static void invalidate_cell(HWND hwnd, const POINT* cell, const int cell_size);
 static void start_button_set_up(HWND parent_window, HWND* button);
 static void draw_snake_head(HDC hdc, const RECT* cell);
+static void game_modes_button_set_up(HWND parent_window, HWND* left_button, HWND* main_button, HWND* right_button);
+static void change_game_mode(HWND parent_window, HWND* main_button, UINT new_game_mode);
+static wchar_t* button_int_to_words(UINT val);
+static void destroy_window_array();
 
 int WINAPI wWinMain(HINSTANCE handle_of_instance, HINSTANCE not_needed, PWSTR command_line, int flag_min_max_normal) {//PWSTR=wchar_t*.
 	global_hInstance = handle_of_instance;
@@ -338,10 +349,42 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 						case BN_CLICKED: {
 							// We hide the button. We only destroy in WM_DESTROY because we need to have it there if the button wasnt pressed, so we just out it only there to make it simpler.
 							ShowWindow(start_button, SW_HIDE);
+							ShowWindow(cur_game_mode, SW_HIDE);
+							ShowWindow(move_game_mode_left, SW_HIDE);
+							ShowWindow(move_game_mode_right, SW_HIDE);
+
 							InvalidateRect(key_of_window, NULL, TRUE);
 							start_game(key_of_window);
 						}
 					}
+					break;
+				}
+
+				// If the < button was pressed to switch the game mode. 
+				case ID_SWITCH_GAME_MODE_LEFT: {
+					// If we made it to the first ID we loop back because we are moving backwords.
+					if (cur_game_mode_int == ID_CLASSIC) {
+						cur_game_mode_int = ID_THREE_APPLES_WALLS_DONT_KILL;
+					}
+					else {
+						cur_game_mode_int--;
+					}
+
+					change_game_mode(key_of_window, &cur_game_mode, cur_game_mode_int);
+					break;
+				}
+
+				// If the > button was pressed to switch the game mode.
+				case ID_SWITCH_GAME_MODE_RIGHT: {
+					// If we make it to the end while going right we circle back.
+					if (cur_game_mode_int == ID_THREE_APPLES_WALLS_DONT_KILL) {
+						cur_game_mode_int = ID_CLASSIC;
+					}
+					else {
+						cur_game_mode_int++;
+					}
+
+					change_game_mode(key_of_window, &cur_game_mode, cur_game_mode_int);
 					break;
 				}
 			}
@@ -584,11 +627,15 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 				break;
 			}
 
+			// We maximise our window now making button placement consistent.
+			ShowWindow(key_of_window, SW_SHOWMAXIMIZED);
+
 			// We get the high score of the game.It is only needed once per run and is cleaner here than in the main.
 			get_high_score();
 
 			// We get the start button up and running to sart the game. We only do it for the main window and not the child.
 			start_button_set_up(key_of_window, &start_button);
+			game_modes_button_set_up(key_of_window, &move_game_mode_left, &cur_game_mode, &move_game_mode_right);
 
 			// We create a handle to the bitmap with the snake head image.
 			snake_head_bitmap = LoadBitmap(global_hInstance, MAKEINTRESOURCE(IDB_SNAKE_HEAD));
@@ -629,6 +676,9 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 			DeleteObject(snake_head_brush);
 			// We delete the handle to the bitmap with the snake head in it
 			DeleteObject(snake_head_bitmap);
+
+			// We destroy the array with all the pointers to the windows that have each game mode button.
+			destroy_window_array();
 
 			// If the case is to leave we end the program and window. We need the PostQuitMessage becasue if we dont have it the function will return 0 without closing the window.
 			PostQuitMessage(0);
@@ -852,6 +902,10 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 						game_state = NOT_STARTED;
 						// We bring back the start button whenwe are in the main scree.
 						ShowWindow(start_button, SW_SHOW);
+						ShowWindow(cur_game_mode, SW_SHOW);
+						ShowWindow(move_game_mode_left, SW_SHOW);
+						ShowWindow(move_game_mode_right, SW_SHOW);
+
 						InvalidateRect(key_of_window, NULL, TRUE);
 					}
 
@@ -1516,7 +1570,7 @@ static void start_button_set_up(HWND parent_window, HWND* button) {
 	int width = (client_area.right - client_area.left) / 7;
 	int hight = (client_area.bottom - client_area.top) / 7;
 	int x = (client_area.right) / 2 - 3 * width / 4;
-	int y = (client_area.bottom - hight) / 2;
+	int y = 2 * (client_area.bottom - hight) / 3;
 
 	// We create a big start game button.
 	*button = CreateWindowEx(WS_EX_OVERLAPPEDWINDOW, L"BUTTON", L"start game", WS_VISIBLE | WS_CHILD | WS_TABSTOP | BS_PUSHBUTTON, x, y, width, hight, parent_window, (HMENU)ID_START_BUTTON_MAIN, global_hInstance, NULL);
@@ -1552,4 +1606,125 @@ static void draw_snake_head(HDC hdc, const RECT* cell) {
 
 	// We delete the memory DC we created.
 	DeleteDC(mem_dc);
+}
+
+// Gets the standered button setup for the start of the game.
+static void game_modes_button_set_up(HWND parent_window, HWND* left_button, HWND* main_button, HWND* right_button) {
+	RECT client_area;
+	GetClientRect(parent_window, &client_area);
+	int width = (client_area.right - client_area.left) / 7;
+	int hight = (client_area.bottom - client_area.top) / 15;
+	int x = (client_area.right) / 2 - 3 * width / 4;
+	int y = (client_area.bottom - hight) / 2;
+
+	*left_button = CreateWindowEx(WS_EX_OVERLAPPEDWINDOW, L"BUTTON", L"<", WS_VISIBLE | WS_CHILD | WS_TABSTOP | BS_PUSHBUTTON, x - width / 4, 5 * y / 6, width / 4, hight, parent_window, (HMENU)ID_SWITCH_GAME_MODE_LEFT, global_hInstance, NULL);
+	*right_button = CreateWindowEx(WS_EX_OVERLAPPEDWINDOW, L"BUTTON", L">", WS_VISIBLE | WS_CHILD | WS_TABSTOP | BS_PUSHBUTTON, x + width, 5*y/6, width / 4, hight, parent_window, (HMENU)ID_SWITCH_GAME_MODE_RIGHT, global_hInstance, NULL);
+
+	*main_button = CreateWindowEx(WS_EX_OVERLAPPEDWINDOW, L"BUTTON", L"classic", WS_VISIBLE | WS_CHILD | WS_TABSTOP | BS_PUSHBUTTON, x, 3 * y / 4, width, 2 * hight, parent_window, (HMENU)ID_GAME_MODE_BUTTON, global_hInstance, NULL);
+
+	// We allocate the room in the heap for the array that has all of our game modes that are set up. HEAP_ZERO_MEMORY initializes all spots to NULL.
+	game_mode_windows = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(HWND) * (ID_THREE_APPLES_WALLS_DONT_KILL - ID_CLASSIC + 1));
+	if (game_mode_windows != NULL) {
+		game_mode_windows[0] = *main_button;
+	}
+	else {
+		MessageBox(parent_window, L"Failed To Allocate Memory For Game Modes.", L"ERROR", MB_OK | MB_ICONERROR);
+	}
+}
+
+// Converts UINT value into the correct game mode to print
+static wchar_t* button_int_to_words(UINT val) {
+	// We undo the removing of 3000 in change_game_mode() that helped us with going to spots in arrays.
+	val += 3000;
+	switch (val) {
+		case ID_CLASSIC: {
+			return L"classic";
+			break;
+		}
+		case ID_WALSS_DONT_KILL: {
+			return L"easy";
+			break;
+		}
+		case ID_DISAPEARING_APPLE: {
+			return L"fast";
+			break;
+		}
+		case ID_DISAPEARING_APPLE_WALLS_DONT_KILL: {
+			return L"easy fast";
+			break;
+		}
+		case ID_THREE_APPLES: {
+			return L"multiple apples";
+			break;
+		}
+		case ID_THREE_APPLES_WALLS_DONT_KILL: {
+			return L"easy multiple apples";
+			break;
+		}
+		default: {
+			return NULL;
+		}
+	}
+}
+
+// Function that changes the current button that is shown baides on request.
+static void change_game_mode(HWND parent_window, HWND* main_button, UINT new_mode) {
+	if (new_mode > 3005 || new_mode < 3000) {
+		MessageBox(parent_window, L"Invalid Game Mode", L"ERROR", MB_OK | MB_ICONERROR);
+		return;
+	}
+	// We take 3000 off because the modes go from 3000-3005.
+	new_mode -= 3000;
+	// We hide the window that had the previous button.
+	ShowWindow(*main_button, SW_HIDE);
+
+	// If we have already been on this game mode, meaning it has already been opened in the past, we can just unhide it.
+	if (game_mode_windows[new_mode]) {
+		ShowWindow(game_mode_windows[new_mode], SW_SHOW);
+		cur_game_mode = game_mode_windows[new_mode];
+		// We are done with this function because we changed the window.
+		return;
+	}
+
+	wchar_t* game_mode = button_int_to_words(new_mode);
+	// If we failed to get the words we print an error and leave.
+	if (game_mode == NULL) {
+		MessageBox(parent_window, L"Failed To Get Game Mode Name", L"ERROR", MB_OK | MB_ICONERROR);
+		return;
+	}
+
+	// We get the spot we will show this button at.
+	RECT client_area;
+	GetClientRect(parent_window, &client_area);
+	int width = (client_area.right - client_area.left) / 7;
+	int hight = (client_area.bottom - client_area.top) / 15;
+	int x = (client_area.right) / 2 - 3 * width / 4;
+	int y = (client_area.bottom - hight) / 2;
+
+	// We create the new button.
+	HWND new_button = NULL;
+	new_button = CreateWindowEx(WS_EX_OVERLAPPEDWINDOW, L"BUTTON", game_mode, WS_VISIBLE | WS_CHILD | WS_TABSTOP | BS_PUSHBUTTON, x, 3 * y / 4, width, 2 * hight, parent_window, (HMENU)(UINT_PTR)new_mode, global_hInstance, NULL);
+	// We save the button as created in the array and update our current game mode.
+	game_mode_windows[new_mode] = new_button;
+	cur_game_mode = new_button;
+}
+
+static void destroy_window_array() {
+	// If its alreadt Null we can just return.
+	if (game_mode_windows == NULL) {
+		return;
+	}
+	
+	// We go over the whole array.
+	for (int i = 0; i <= ID_THREE_APPLES_WALLS_DONT_KILL - ID_CLASSIC; ++i) {
+		// If a window does exist in that position we destroy it and put it to NULL.
+		if (game_mode_windows[i]) {
+			DestroyWindow(game_mode_windows[i]);
+			game_mode_windows[i] = NULL;
+		}
+	}
+
+	// We free the memory that we allocated from the heap and set the pointer to NULL.
+	HeapFree(GetProcessHeap(), 0, game_mode_windows);
+	game_mode_windows = NULL;
 }
