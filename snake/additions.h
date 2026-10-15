@@ -24,6 +24,7 @@
 
 // Defualt values for queue.
 #define DEFAULT_MAX_Q 100
+#define MAX_SNAKE_SIZE 50
 
 // Game states
 #define NOT_STARTED 0
@@ -43,3 +44,8 @@
 #define ID_DISAPEARING_APPLE_WALLS_DONT_KILL 3003
 #define ID_THREE_APPLES 3004
 #define ID_THREE_APPLES_WALLS_DONT_KILL 3005
+
+// 2^15-1
+#define FULL_RANGE_POS_MAX_RAND 32767
+// 2^31-1
+#define RAN_32_POS_MAX 2147483647

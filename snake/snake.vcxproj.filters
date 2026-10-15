@@ -24,6 +24,21 @@
     <ClCompile Include="Snake.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="random.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="high_score.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="drawing.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="buttons.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="dialogs.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="additions.h">
@@ -36,6 +51,21 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="resource.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="random.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="high_score.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="drawing.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="buttons.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="dialogs.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

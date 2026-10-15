@@ -127,15 +127,25 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="buttons.c" />
+    <ClCompile Include="dialogs.c" />
+    <ClCompile Include="drawing.c" />
+    <ClCompile Include="high_score.c" />
     <ClCompile Include="main.c">
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Default</CompileAs>
     </ClCompile>
     <ClCompile Include="queue.c" />
+    <ClCompile Include="random.c" />
     <ClCompile Include="Snake.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="additions.h" />
+    <ClInclude Include="buttons.h" />
+    <ClInclude Include="dialogs.h" />
+    <ClInclude Include="drawing.h" />
+    <ClInclude Include="high_score.h" />
     <ClInclude Include="queue.h" />
+    <ClInclude Include="random.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="Snake.h" />
   </ItemGroup>

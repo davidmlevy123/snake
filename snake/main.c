@@ -4,10 +4,14 @@
 #include "resource.h"
 #include "queue.h" 
 #include "Snake.h"
+#include "random.h"
+#include "high_score.h"
+#include "drawing.h"
+#include "buttons.h"
+#include "dialogs.h"
 
 const wchar_t class_name[] = L"Main Window.";
 const wchar_t window_name[] = L"Snake";
-
 
 // We create our actual snake, in c we cant give default values so we need to give the values when we define it.
 Snake my_snake = { .length = 3 , .cur_direction = RIGHT };
@@ -15,7 +19,7 @@ static void set_snake_start_points(){
 	// Distroy the snake if one still exists and has not been destroyed.
 	destroy_queue(&my_snake.snake);
 	// We create the snake with the default points (passing NULL).
-	my_snake = create_snake(3, RIGHT, NULL, 50);
+	my_snake = create_snake(3, RIGHT, NULL, MAX_SNAKE_SIZE);
 }
 
 // A queue that has the buttons pressed so we can do them on their time. If we dont have it its possible to do 2 moves per tick breaking the game.
@@ -25,6 +29,12 @@ static void set_button_queue() {
 	destroy_queue(&buttons_pressed);
 	buttons_pressed = create_queue(NULL, sizeof(int), 3, 0, 0);
 }
+
+// Our drawing default resources. (Used when i want the default stuff that i created).
+drawing_resources default_my_colouring_stuff;
+
+// Our buttons we have for the start window.
+window_buttons start_buttons;
 
 typedef struct {
 	POINT apple;
@@ -42,16 +52,6 @@ HWND global_cur_win;
 // We make it global so we can save if the dialog is up.
 HWND handle_to_settings = NULL;
 
-// A handle to the button taht starts the game.
-HWND start_button;
-HWND move_game_mode_right;
-HWND move_game_mode_left;
-HWND cur_game_mode;
-HWND* game_mode_windows;
-
-// A global UINT that 
-UINT cur_game_mode_int = ID_CLASSIC;
-
 // The bool to know if we should draw the smiley face in the WM_PAINT.
 BOOL draw_face = FALSE;
 
@@ -66,49 +66,12 @@ UINT high_score = 0;
 // The time of a tick in the game, meaning the speed of the snake.
 UINT cur_timer_speed = 100;
 
-// We get the font for drawing the game score and high score.
-HFONT font_for_drawing = NULL;
-
-// A brush that has the snake head bitmap to use loded in it.
-HBRUSH snake_head_brush = NULL;
-// The bitmap with the snake head in it.
-HBITMAP snake_head_bitmap = NULL;
-// hight and width of the snake head bitmap. 
-int snake_head_bitmap_h = 0;
-int snake_head_bitmap_w = 0;
-
-// A int that holds the state of our random numbers.
-static unsigned long long random_seed = 1;
-
 static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM key_pressed, LPARAM extra_msg_info);
-static INT_PTR CALLBACK AboutDialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam);
-static INT_PTR CALLBACK SettingsDialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
-static void SetHatchBrushBackground(HDC hdc, BOOL transparent);
-static void SetWindowBackground(HDC hdc, PAINTSTRUCT pt, INT n); // n is an option to chose the bk colour, -1 means continue loop.
-static void words_for_window(HWND hwnd, HDC hdc);
-static void Eyes(HDC hdc);
-static void Head(HDC hdc);
-static void Mouth(HDC hdc);
-static void smiley_face(HDC hdc);
 static void queue_direction_if_valid(const UINT new_direction);
-static void set_up_rand();
-static int  full_range_ran();
-static int  my_rand(const int a, const int b); // Gets a random number in between a and b.
 static void start_game(const HWND key_of_window);
-static BOOL create_my_font(HFONT* to_create, HWND hwnd);
-static void print_game_score(HDC hdc, const int cell_size, HFONT my_font);
-static BOOL get_high_score_file_path(wchar_t* path);
-static void set_high_score();
-static void get_high_score();
 static int  get_cell_size(HWND key_of_window);
 static void invalidate_cell(HWND hwnd, const POINT* cell, const int cell_size);
-static void start_button_set_up(HWND parent_window, HWND* button);
-static void draw_snake_head(HDC hdc, const RECT* cell);
-static void game_modes_button_set_up(HWND parent_window, HWND* left_button, HWND* main_button, HWND* right_button);
-static void change_game_mode(HWND parent_window, HWND* main_button, UINT new_game_mode);
-static wchar_t* button_int_to_words(UINT val);
-static void destroy_window_array();
 
 int WINAPI wWinMain(HINSTANCE handle_of_instance, HINSTANCE not_needed, PWSTR command_line, int flag_min_max_normal) {//PWSTR=wchar_t*.
 	global_hInstance = handle_of_instance;
@@ -349,10 +312,10 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 						// If the button was pressed.
 						case BN_CLICKED: {
 							// We hide the button. We only destroy in WM_DESTROY because we need to have it there if the button wasnt pressed, so we just out it only there to make it simpler.
-							ShowWindow(start_button, SW_HIDE);
-							ShowWindow(cur_game_mode, SW_HIDE);
-							ShowWindow(move_game_mode_left, SW_HIDE);
-							ShowWindow(move_game_mode_right, SW_HIDE);
+							ShowWindow(start_buttons.start_button, SW_HIDE);
+							ShowWindow(start_buttons.cur_game_mode, SW_HIDE);
+							ShowWindow(start_buttons.move_game_mode_left, SW_HIDE);
+							ShowWindow(start_buttons.move_game_mode_right, SW_HIDE);
 
 							InvalidateRect(key_of_window, NULL, TRUE);
 							start_game(key_of_window);
@@ -363,29 +326,13 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 
 				// If the < button was pressed to switch the game mode. 
 				case ID_SWITCH_GAME_MODE_LEFT: {
-					// If we made it to the first ID we loop back because we are moving backwords.
-					if (cur_game_mode_int == ID_CLASSIC) {
-						cur_game_mode_int = ID_THREE_APPLES_WALLS_DONT_KILL;
-					}
-					else {
-						cur_game_mode_int--;
-					}
-
-					change_game_mode(key_of_window, &cur_game_mode, cur_game_mode_int);
+					change_game_mode(&start_buttons, -1);
 					break;
 				}
 
 				// If the > button was pressed to switch the game mode.
 				case ID_SWITCH_GAME_MODE_RIGHT: {
-					// If we make it to the end while going right we circle back.
-					if (cur_game_mode_int == ID_THREE_APPLES_WALLS_DONT_KILL) {
-						cur_game_mode_int = ID_CLASSIC;
-					}
-					else {
-						cur_game_mode_int++;
-					}
-
-					change_game_mode(key_of_window, &cur_game_mode, cur_game_mode_int);
+					change_game_mode(&start_buttons, 1);
 					break;
 				}
 			}
@@ -402,10 +349,10 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 			hdc = BeginPaint(key_of_window, &pt);
 
 			// We set the background colour if the flag is true.
-			SetWindowBackground(hdc, pt, -1);
+			SetWindowBackground(hdc, pt, -1, &bk_colour);
 
 			// Prints the words for the window.
-			words_for_window(key_of_window, hdc);
+			words_for_window(key_of_window, hdc, game_state);
 
 			if (game_state == GAME_OVER) {
 				// We call the function to create the whole smiley face.
@@ -454,7 +401,7 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 					head_to_colour.right = head_to_colour.left + cell_size - 2;
 					head_to_colour.bottom = head_to_colour.top + cell_size - 2;
 					// We call the functionn that draws the head with the snake bitmap.
-					draw_snake_head(hdc, &head_to_colour);
+					fill_square_with_bitmap(hdc, &head_to_colour, &default_my_colouring_stuff);
 
 					// We delete the HBRUSH we created.
 					DeleteObject(black);
@@ -477,7 +424,7 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 					head_to_colour.top = head_point->y * cell_size + 1;
 					head_to_colour.right = head_to_colour.left + cell_size - 2;
 					head_to_colour.bottom = head_to_colour.top + cell_size - 2;
-					draw_snake_head(hdc, &head_to_colour);
+					fill_square_with_bitmap(hdc, &head_to_colour, &default_my_colouring_stuff);
 
 					DeleteObject(green);
 				}
@@ -505,7 +452,7 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 				}
 				
 				// We call the function that prints our game score.
-				print_game_score(hdc, cell_size, font_for_drawing);
+				print_game_score(hdc, cell_size, &default_my_colouring_stuff, score, high_score);
 			}
 
 			// We must end the painting.
@@ -526,8 +473,9 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 			// We only create for the parent window not child.
 			if (!((style = GetWindowLongPtr(key_of_window, GWL_STYLE)) & WS_CHILD))
 			{
-				// We create the font we use to write the game score and high score. We do it here so we dont end up creating it a lot of times. Deleted in WM_DESTROY.
-				create_my_font(&font_for_drawing, key_of_window);
+				// We create the font we use to write the game score and high score. We do it here so we dont end up creating it a lot of times. Deleted in WM_DESTROY. It should already be created but we need to resize.
+				int font_size = -(get_cell_size(key_of_window) * 3 / 4);
+				create_my_font(&default_my_colouring_stuff.main_font, font_size);
 			}
 
 			InvalidateRect(key_of_window, NULL, TRUE);
@@ -628,32 +576,27 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 				break;
 			}
 
+			// good font size.
+			int cell_size = get_cell_size(key_of_window);
+			int font_size = -(cell_size * 3 / 4);
+			// If we failed to create 
+			if (!create_drawing_resources(&default_my_colouring_stuff, global_hInstance, font_size, IDB_SNAKE_HEAD, 0)) {
+				MessageBox(key_of_window, L"Closing Window, Drawing Resources Failed.", L"ERROR", MB_OK | MB_ICONERROR);
+				return -1;
+			}
+
 			// We maximise our window now making button placement consistent.
 			ShowWindow(key_of_window, SW_SHOWMAXIMIZED);
 
 			// We get the high score of the game.It is only needed once per run and is cleaner here than in the main.
-			get_high_score();
+			high_score = get_high_score();
 
-			// We get the start button up and running to sart the game. We only do it for the main window and not the child.
-			start_button_set_up(key_of_window, &start_button);
-			game_modes_button_set_up(key_of_window, &move_game_mode_left, &cur_game_mode, &move_game_mode_right);
-
-			// We create a handle to the bitmap with the snake head image.
-			snake_head_bitmap = LoadBitmap(global_hInstance, MAKEINTRESOURCE(IDB_SNAKE_HEAD));
-			// If it failed to create we send the error message and leave.
-			if (snake_head_bitmap == NULL) {
-				MessageBox(key_of_window, L"Failed To Load Snake Head Bitmap", L"ERROR", MB_OK | MB_ICONERROR);
-				break;
+			// We get the start button up and running to sart the game. We only do it for the main window and not the child. If it failed we leave the creation of the window.
+			if (!create_window_buttons(&start_buttons, key_of_window)) {
+				MessageBox(key_of_window, L"Closing Window, Window Start Buttons Failed.", L"ERROR", MB_OK | MB_ICONERROR);
+				return -1;
 			}
-			BITMAP snake_head_info;
-			// Gets the info about the snake_head bitmap. 
-			GetObject(snake_head_bitmap, sizeof(BITMAP), &snake_head_info);
-			// We get the hight and width for the snake head bitmap.
-			snake_head_bitmap_h = snake_head_info.bmHeight;
-			snake_head_bitmap_w = snake_head_info.bmWidth;
 
-			// We create a brush with that bitmap as its pattern.
-			snake_head_brush = CreatePatternBrush(snake_head_bitmap);
 			return 0;
 		}
 
@@ -667,19 +610,11 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 			destroy_queue(&my_snake.snake);
 			destroy_queue(&buttons_pressed);
 
-			// We delete the font we created for writing the current and high score.
-			DeleteObject(font_for_drawing);
-
-			// We destroy the button for starting the game.
-			DestroyWindow(start_button);
-
-			// We delete the brush we used for drawing the snake head in the end.
-			DeleteObject(snake_head_brush);
-			// We delete the handle to the bitmap with the snake head in it
-			DeleteObject(snake_head_bitmap);
-
 			// We destroy the array with all the pointers to the windows that have each game mode button.
-			destroy_window_array();
+			destroy_window_buttons(&start_buttons);
+
+			// We destroy my drawing resource.
+			destroy_drawing_resources(&default_my_colouring_stuff);
 
 			// If the case is to leave we end the program and window. We need the PostQuitMessage becasue if we dont have it the function will return 0 without closing the window.
 			PostQuitMessage(0);
@@ -902,10 +837,10 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 					else {
 						game_state = NOT_STARTED;
 						// We bring back the start button whenwe are in the main scree.
-						ShowWindow(start_button, SW_SHOW);
-						ShowWindow(cur_game_mode, SW_SHOW);
-						ShowWindow(move_game_mode_left, SW_SHOW);
-						ShowWindow(move_game_mode_right, SW_SHOW);
+						ShowWindow(start_buttons.start_button, SW_SHOW);
+						ShowWindow(start_buttons.cur_game_mode, SW_SHOW);
+						ShowWindow(start_buttons.move_game_mode_left, SW_SHOW);
+						ShowWindow(start_buttons.move_game_mode_right, SW_SHOW);
 
 						InvalidateRect(key_of_window, NULL, TRUE);
 					}
@@ -913,7 +848,7 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 					// If the score we got this game is the high score (high score gets the number from the file at the beggining) we set it here and not in WM_DESTROY because if the code crashes we might lose the high score so its better here.
 					if (score > high_score) {
 						high_score = score;
-						set_high_score();
+						set_high_score(high_score);
 					}
 					break;
 				}
@@ -943,361 +878,6 @@ static LRESULT CALLBACK WindowProc(HWND key_of_window, UINT code_of_msg, WPARAM 
 	return 0;
 }
 
-static INT_PTR CALLBACK AboutDialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam) {
-	switch (uMsg) {
-		// Called the moment before the dialog appears on screen
-		case WM_INITDIALOG:
-		{
-			// If the cancel was pressed we 
-			if (cancel_pressed != 0) {
-				WCHAR final_text[32];
-				// We add the number to the end of the final text. We use %u because cancel_pressed is a UINT.
-				swprintf_s(final_text, 32, L"Cancel: %u", cancel_pressed);
-				// We set the new dialogs text in the cancel box to "Cancel: x". x is the amount of cancels since last game.
-				SetDlgItemText(hwndDlg, ID_CANCEL_DIALOG, final_text);
-			}
-
-			return (INT_PTR)TRUE;
-		}
-
-		// Handles buttons clicked inside the dialog
-		case WM_COMMAND:
-		{
-			switch (LOWORD(wParam)) {
-
-				// If the start game button was pressed. Equivalent to WM_CREATE for a window. The controls are already created by this point.
-				case  ID_START_GAME_BUTTON: {
-					//// We get the length of the text in the cancel button in the dialog. Doesnt include null terminator.
-					//int len = GetWindowTextLength(GetDlgItem(hwndDlg, ID_CANCEL_DIALOG));
-					//if (len > 0) {
-					//	// We create the buffer. We use len+1 becasue we have to include the null terminator.
-					//	LPWSTR buffer = (LPWSTR)calloc(len + 1, sizeof(wchar_t));
-					//	// We get the actual text. It returns an int value for the amount of data we read not including the null terminator.
-					//	GetDlgItemText(hwndDlg, ID_CANCEL_DIALOG, buffer, len + 1);
-
-					//	// We clode the dialog
-					//	EndDialog(hwndDlg, LOWORD(wParam));
-
-					//	if (len == 7) {
-					//		MessageBox(NULL, L"No Cancels", L"Cancels", MB_OK | MB_ICONINFORMATION);
-					//	}
-					//	else 
-					//	{
-					//		MessageBox(NULL, buffer, L"Cancels", MB_OK | MB_ICONINFORMATION);
-					//	}
-					//	free(buffer);
-					//}
-
-					//else {
-					// This destroys the dialog and unfreezes the main game window. It is needed because a dialog is something we created, like a window.
-
-					EndDialog(hwndDlg, LOWORD(wParam));
-					//}					
-					return (INT_PTR)TRUE;
-				}
-
-				// If the cancel button was pressed.
-				case ID_CANCEL_DIALOG: {
-					EndDialog(hwndDlg, LOWORD(wParam));
-					return (INT_PTR)TRUE;
-				}
-				
-				// If the x was pressed.
-				case IDCANCEL:
-				{
-					EndDialog(hwndDlg, LOWORD(wParam));
-					return (INT_PTR)TRUE;
-				}
-			}
-			return (INT_PTR)FALSE;
-			break;
-		}
-
-		default: {
-			// Return FALSE if we didn't handle the message.
-			return (INT_PTR)FALSE;
-		}
-	}
-}
-
-// Function for modeless dialog.
-static INT_PTR CALLBACK SettingsDialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam) {
-	switch (uMsg) {
-		case WM_INITDIALOG: {
-			return (INT_PTR)TRUE;
-			break;
-		}
-		
-		case WM_COMMAND: {
-			switch (LOWORD(wParam)) {
-				// If the hide button was pressed
-				case ID_HIDE_DIALOG: {
-					// We hide the dialog(still open just not in view.
-					ShowWindow(hwndDlg, SW_HIDE);
-
-					// If it is stile set to SW_HIDE or it got closed.
-					if (IsWindowVisible(handle_to_settings) || !IsWindow(handle_to_settings)) {
-						MessageBox(handle_to_settings, L"Failed To Hide Window", L"ERROR", MB_OK | MB_ICONERROR);
-					}
-					return (INT_PTR)TRUE;
-					break;
-				}
-
-				// If the x at the top was pressed.
-				case IDCANCEL:
-				{
-					// We use destroy DestroyWindow because that is what is used for a task that did not freeze everything else(a normal dialog does).
-					DestroyWindow(hwndDlg);
-					handle_to_settings = NULL;
-					return (INT_PTR)TRUE;
-					break;
-				}
-			}
-			break;
-		}
-
-		// If we use a system command.
-		case WM_SYSCOMMAND: {
-			// If we try to move the dialog.
-			if ((wParam & 0xFFF0) == SC_MOVE) {// We only look at the first 16 digs because SC is 16 bits
-				// We dont move it because we want ot lock it in place.
-				return (INT_PTR)TRUE;
-			}
-			break;
-		}
-	}
-	return (INT_PTR)FALSE;
-}
-
-static void SetHatchBrushBackground(HDC hdc, BOOL transparent) {
-	// We create a brush that is Blue. 
-	HBRUSH hSolidBrush = CreateSolidBrush(RGB(0, 0, 255));
-	// It fills the empty spaces between the hatch lines.
-	SetBkColor(hdc, RGB(255, 0, 0));
-
-	// If we want it to be transparend type we set it to it else opaque. (types of background settings)
-	if (transparent == TRUE) {
-		SetBkMode(hdc, TRANSPARENT);
-	}
-	else {
-		SetBkMode(hdc, OPAQUE);
-	}
-
-	// We get the default brush hdc had so we can put it back in at the end to allow us to delete the other brushes. We also equip hSolidBrush to hdc.
-	HBRUSH default_brush = (HBRUSH)SelectObject(hdc, hSolidBrush);
-
-	// If we failed to create hSolidBrush.
-	if (hSolidBrush == NULL) {
-		// We dont have to delete anything because we failed to create the first brush.
-		MessageBox(NULL, L"Failed To Create Hatch Brush.", _T("ERROR."), MB_OK);
-		return;
-	}
-	// Create a Rectangle with those dimentions and use hdc on it meaning use the brush. (0,0) is top left corner.
-	Rectangle(hdc, 50, 40, 400, 500);
-	// We create a hatch brush that is vertical lines in black.
-	HBRUSH hHatchBrush = CreateHatchBrush(HS_VERTICAL, RGB(0, 0, 0));
-
-	// If we failed to create the brush:
-	if (hHatchBrush == NULL) {
-		// Give hdc the default brush back so we can delete the brush(hSolidBrush because he was already created without a problem).
-		SelectObject(hdc, default_brush);
-		DeleteObject(hSolidBrush);
-		MessageBox(NULL, L"Failed To Create Hatch Brush.", _T("ERROR."), MB_OK);
-		return;
-	}
-
-	// We bunch the hdc with the new brush, replacing the old one.
-	SelectObject(hdc, hHatchBrush);
-	// We create a new rectangle in hdc with our new brush(it sits on top of the old one).
-	Rectangle(hdc, 50, 40, 400, 500);
-
-	// We put the default brush back in because we cant delete a brush that is in hdc 
-	SelectObject(hdc, default_brush);
-	// We manually delete both brushes because they dont get deleted automatically (exept if they are default brushes).
-	DeleteObject(hSolidBrush);
-	DeleteObject(hHatchBrush);
-}
-
-// Function to set the colour of the background. 
-static void SetWindowBackground(HDC hdc, PAINTSTRUCT pt, INT n) {
-	// We use the FillRect function to fill in the rectangle in black. The rectangle is the window in this case.
-	int save_bk_colour = bk_colour;
-	// If we got a specified value we use it.
-	if (n != -1) {
-		bk_colour = n;
-	}
-	switch (bk_colour) {
-		case BLACKBK: {
-			HBRUSH colour = CreateSolidBrush(RGB(0, 0, 0));
-			HBRUSH default_brush = (HBRUSH)SelectObject(hdc, colour);
-			FillRect(hdc, &pt.rcPaint, colour);
-			SelectObject(hdc, default_brush);
-			DeleteObject(colour);
-			break;
-		}
-		case REDBK: {
-			HBRUSH colour = CreateSolidBrush(RGB(255, 0, 0));
-			HBRUSH default_brush = (HBRUSH)SelectObject(hdc, colour);
-			FillRect(hdc, &pt.rcPaint, colour);
-			SelectObject(hdc, default_brush);
-			DeleteObject(colour);
-			break;
-		}
-		case GREENBK: {
-			HBRUSH colour = CreateSolidBrush(RGB(0, 255, 0));
-			HBRUSH default_brush = (HBRUSH)SelectObject(hdc, colour);
-			FillRect(hdc, &pt.rcPaint, colour);
-			SelectObject(hdc, default_brush);
-			DeleteObject(colour);
-			break;
-		}
-		case BLUEBK: {
-			HBRUSH colour = CreateSolidBrush(RGB(0, 0, 255));
-			HBRUSH default_brush = (HBRUSH)SelectObject(hdc, colour);
-			FillRect(hdc, &pt.rcPaint, colour);
-			SelectObject(hdc, default_brush);
-			DeleteObject(colour);
-			break;
-		}
-		case WHITEBK: {
-			HBRUSH colour = CreateSolidBrush(RGB(255, 255, 255));
-			HBRUSH default_brush = (HBRUSH)SelectObject(hdc, colour);
-			FillRect(hdc, &pt.rcPaint, colour);
-			SelectObject(hdc, default_brush);
-			DeleteObject(colour);
-			break;
-		}
-		case LIGHTGREENBK: {
-			HBRUSH colour = CreateSolidBrush(RGB(144, 238, 144));
-			HBRUSH default_brush = (HBRUSH)SelectObject(hdc, colour);
-			FillRect(hdc, &pt.rcPaint, colour);
-			SelectObject(hdc, default_brush);
-			DeleteObject(colour);
-			break;
-		}
-		case LIGHTBLUEBK: {
-			HBRUSH colour = CreateSolidBrush(RGB(144, 213, 255));
-			HBRUSH default_brush = (HBRUSH)SelectObject(hdc, colour);
-			FillRect(hdc, &pt.rcPaint, colour);
-			SelectObject(hdc, default_brush);
-			DeleteObject(colour);
-			break;
-		}
-		case VIOLETBK: {
-			HBRUSH colour = CreateSolidBrush(RGB(151, 89, 154));
-			HBRUSH default_brush = (HBRUSH)SelectObject(hdc, colour);
-			FillRect(hdc, &pt.rcPaint, colour);
-			SelectObject(hdc, default_brush);
-			DeleteObject(colour);
-			break;
-		}
-		default: {
-			int ans = MessageBox(global_cur_win, L"Invalid Background Colour.\nSet To Default?", L"ERROR", MB_YESNO | MB_ICONERROR);
-			// Set to defaule, Black
-			if (ans == IDYES) {
-				HBRUSH colour = CreateSolidBrush(RGB(0, 0, 0));
-				HBRUSH default_brush = (HBRUSH)SelectObject(hdc, colour);
-				FillRect(hdc, &pt.rcPaint, colour);
-				SelectObject(hdc, default_brush);
-				DeleteObject(colour);
-			}
-			// Leave and dont change
-			else {
-				return;
-			}
-		}
-	}
-	// If we ended up using n we want to go back to the samne spot in cycle.
-	bk_colour = save_bk_colour;
-}
-
-// Function to add main words to the window. If child: "This Is A Child Window." , If its has no parent: "Welcome To My Window.".
-static void words_for_window(HWND hwnd, HDC hdc) {
-	LONG_PTR style;
-
-	// If the coordinates of the window are relitive to a parent that means it must be a child. 
-	if ((style = GetWindowLongPtr(hwnd, GWL_STYLE)) & WS_CHILD)
-	{
-		TCHAR text[] = L"This Is A Child Window.";
-		SetTextColor(hdc, RGB(0, 255, 0));
-		TextOut(hdc, 5, 5, text, (int)_tcslen(text));
-	}
-	else {
-		// We set the background of text and text colours.
-		TCHAR text[] = L"Welcome To My Window.";
-		SetBkColor(hdc, RGB(255, 255, 255));
-		SetTextColor(hdc, RGB(0, 255, 0));
-		if (game_state == NOT_STARTED) {
-			// We print the text with our colours. We do that only if we havent started the game so we dont block the game with the words. 
-			TextOut(hdc, 5, 5, text, (int)_tcslen(text));
-		}
-	}
-}
-
-// We create the eyes for the similey face.
-static void Eyes(HDC hdc) {
-	// We set the background mode to TRANSPARENT mode.
-	SetBkMode(hdc, TRANSPARENT);
-
-	// We create the white part of the eye and put it in hdc.
-	HBRUSH outer_eye_brush = CreateSolidBrush(RGB(255, 255, 255));
-	HBRUSH default_brush = (HBRUSH)SelectObject(hdc, outer_eye_brush);
-
-	//Create each eye
-	Ellipse(hdc, 625, 220, 675, 270);
-	Ellipse(hdc, 825, 220, 875, 270);
-
-	// We create the inner eye.
-	HBRUSH inner_eye_brush = CreateSolidBrush(RGB(0, 0, 0));
-	SelectObject(hdc, inner_eye_brush);
-	Ellipse(hdc, 645, 243, 657, 255);
-	Ellipse(hdc, 845, 243, 857, 255);
-
-	// We reput the default brush so we can delete the ones we created.
-	SelectObject(hdc, default_brush);
-
-	// We delete the custom brushes we created.
-	DeleteObject(outer_eye_brush);
-	DeleteObject(inner_eye_brush);
-}
-
-// We create the head for the similey face.
-static void Head(HDC hdc) {
-	// We create a blue brush for the head and put it in hdc.
-	HBRUSH head = CreateSolidBrush(RGB(0, 0, 255));
-	HBRUSH default_brush = (HBRUSH)SelectObject(hdc, head);
-
-	// We create the head with the brush.
-	Ellipse(hdc, 500, 100, 1000, 600);
-
-	// We reput the default brush so we can delete the ones we created.
-	SelectObject(hdc, default_brush);
-
-	// We detele the custom brush we created.
-	DeleteObject(head);
-}
-
-// Function to create the mouth.
-static void Mouth(HDC hdc) {
-	// We create a green brush for the mouth and put it in hdc
-	HBRUSH mouth_brush = CreateSolidBrush(RGB(255, 0, 0));
-	HBRUSH default_brush = SelectObject(hdc, mouth_brush);
-
-	// A function to create an arc. It has Left, Top, Right, Bottom, StartX, StartY, EndX, EndY.
-	Chord(hdc, 600, 425, 900, 545, 600, 485, 900, 485);
-
-	// Same logic as always.
-	SelectObject(hdc, default_brush);
-	DeleteObject(mouth_brush);
-}
-
-// Funtion to create the smiley face.
-static void smiley_face(HDC hdc) {
-	Head(hdc);
-	Eyes(hdc);
-	Mouth(hdc);
-}
-
 // Puts a direction in the queue if it is going to be a valid direction when its turn comes up.
 static void queue_direction_if_valid(const UINT new_direction) {
 	UINT cur = my_snake.cur_direction;
@@ -1312,26 +892,6 @@ static void queue_direction_if_valid(const UINT new_direction) {
 	}
 	int to_push = new_direction;
 	push(&buttons_pressed, &to_push);
-}
-
-// A void that sets up getting random numbers. We call it once at the beggining of the game.
-static void set_up_rand() {
-	// Gets the number of milliseconds since pc has started. It will be different for every run.
-	random_seed = GetTickCount64();
-}
-
-// Return a random number in the range 0->2^15-1.
-static int full_range_ran() {
-	// This is the formula used by the Microsoft C compiler. It multiplies the seed by a prime number and adds an offset.
-	random_seed = (random_seed * 214013 + 2531011);
-
-	// We use that becasue only 16 bits end up random so we shift it, we do &7FFF to get rid of negetive numbers.
-	// If we want a number than 32767(2^15-1) we use the first digits as one random number and the next 16 as another and so on.
-	return (random_seed >> 16) & 0x7FFF;
-}
-
-static int my_rand(const int a, const int b) {
-	return a + (full_range_ran() % (b - a + 1));
 }
 
 // Gets the game ready for starting.
@@ -1366,175 +926,6 @@ static void start_game(const HWND key_of_window) {
 	InvalidateRect(key_of_window, NULL, TRUE);
 }
 
-static BOOL create_my_font(HFONT* to_create, HWND hwnd) {
-	int cell_size = get_cell_size(hwnd);
-	int font_size = -(cell_size * 3 / 4);
-
-	// If we have already created it and we want to recreate beacuase the widow size was changed.
-	if (*to_create) {
-		DeleteObject(*to_create);
-		*to_create = NULL;
-	}
-
-	// We create the actual font.
-	*to_create =
-		CreateFont(font_size, // cHeight - the height of the character if negative. If positive the height of the cell that the char is in so char size would be a bit smaller and for 0 the default for that font.
-			0, 0, 0,
-			FW_ULTRABOLD, // Font type (i.e. normal, bold, light, super bold...)
-			FALSE, FALSE, FALSE,
-			DEFAULT_CHARSET, // The char's we have in our font HEBREW_CHARSET for a hebrew font.
-			OUT_DEFAULT_PRECIS, // Lets windows find the font that best matches my request. I can use other values to tell it my priorities.
-			CLIP_DEFAULT_PRECIS, // Same idea but with clipping (clipping - where it is allowed to draw the chars. Different values say dont darw at all if its not in ad others).  
-			CLEARTYPE_QUALITY, // Simular idea.
-			FF_MODERN, // The family of fonts we choose from (i.e. modern, roman, old english...)
-			L"font of score" /*name of font*/); // for more info .https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-createfonta.
-
-	// If the font failed to create we send a message and leave the function.
-	if (!(*to_create)) {
-		MessageBox(global_cur_win, L"Failed To Create Font.", L"ERROR", MB_OK | MB_ICONERROR);
-		return FALSE;
-	}
-
-	return TRUE;
-}
-
-// Prints the current score of game onto the screen.
-static void print_game_score(HDC hdc, const int cell_size, HFONT my_font) {
-	// We select the new font on to the hdc. We save the old font so we can put it back together with hdc.
-	HFONT old_font = (HFONT)SelectObject(hdc, my_font);
-
-	// We create the text that we will be printing on the screen.
-	wchar_t text[256];
-	swprintf_s(text, sizeof(text) / sizeof(wchar_t), L"current score: %u", score);
-
-	// We print out the text we want to in its spot.
-	TextOut(hdc, cell_size * (GRID_W + 2), cell_size, text, (int)wcslen(text));
-	
-	// We print the bigger one between our current score and the high score.
-	UINT high_score_print;
-	if (high_score < score) {
-		high_score_print = score;
-	}
-	else {
-		high_score_print = high_score;
-	}
-
-	// Same thing but we print the high score under.
-	wchar_t high_score_text[256];
-	swprintf_s(high_score_text, sizeof(high_score_text) / sizeof(wchar_t), L"high score: %u", high_score_print);
-	TextOut(hdc, cell_size * (GRID_W + 2), cell_size * 2, high_score_text, (int)wcslen(high_score_text));
-
-	// We repair the old font with hdc and now we can delete the one we created.
-	SelectObject(hdc, old_font);
-}
-
-// Gets the path to the file of the high score.
-static BOOL get_high_score_file_path(wchar_t* path) {
-	// We get the file path of the .exe into path. If failed (code 0) return false.
-	if (GetModuleFileName(NULL, path, MAX_PATH) == 0) {
-		return FALSE;
-	}
-
-	// We go back to the begining of the .exe file that is runing, earase it and replace with the path of the highsocre file.
-	int i = (int)wcslen(path);
-	// While we arent at the begginig of the path and we didnt make it to \\ yet, meaning we didnt make it to the beggining of the .exe.
-	while (i >= 0 && path[i] != L'\\') {
-		i--;
-	}
-	// We cut off the string after the .exe ends so we get rid of that part of the path.
-	path[i + 1] = L'\0';
-	// We use the .dat ending so we cant just edit the file(if .txt) to give a big number as the max which is just a lie.
-	wcscat_s(path, MAX_PATH, L"high_score.dat");
-
-	return TRUE;
-}
-
-// Sets the high score to the value we get.
-static void set_high_score() {
-	// We get the path and make sure it was found.
-	wchar_t path[MAX_PATH];
-
-	// If we failed ro get the file path.
-	if (!get_high_score_file_path(path)) {
-		MessageBox(NULL, L"Failed To Get File Path", L"ERROR", MB_OK | MB_ICONERROR);
-	}
-	
-	// Same as get_high score but we open for writing instead of reading.
-	HANDLE h_file =
-		CreateFile(path, // Path to the file we are creating/opening
-			GENERIC_WRITE, // We open the file for reading.
-			0, // This deals with sharing which we dont have.
-			NULL, // Security stuff for child processes, its optional and we dont need it.
-			CREATE_ALWAYS, // We open the file if it exists if not we create it.
-			FILE_ATTRIBUTE_HIDDEN, // Hides the file so the user doesnt tamper with by accident. It can be viewed if see hidden files is on.
-			NULL); // Again has to do with security and encription which we dont need.
-
-	// If the file failed to open so we can save the high score we send an error message.
-	if (h_file == INVALID_HANDLE_VALUE) {
-		MessageBox(NULL, L"Failed To Save High Score.", L"ERROR", MB_OK | MB_ICONERROR);
-		return;
-	}
-
-	// Same logic as get_high_score but here we write.
-	DWORD num_of_bytes_writen = 0;
-	if (!WriteFile(h_file, &high_score, sizeof(high_score), &num_of_bytes_writen, NULL)) {
-		MessageBox(NULL, L"Failed To Write High Score.", L"ERROR", MB_OK | MB_ICONERROR);
-	}
-	if (num_of_bytes_writen != sizeof(high_score)) {
-		MessageBox(NULL, L"Failed To Write High Score.", L"ERROR", MB_OK | MB_ICONERROR);
-	}
-
-	// Realse the mem.
-	CloseHandle(h_file);
-}
-
-// A function that gets the high score from the file and puts it into the global var high_score.
-static void get_high_score() {
-	// We get the path and make sure it was found.
-	wchar_t path[MAX_PATH];
-
-	// If we failed to get the file path.
-	if (!get_high_score_file_path(path)) {
-		MessageBox(NULL, L"Failed To Get File Path", L"ERROR", MB_OK | MB_ICONERROR);
-	}
-
-	// We create the file if it didnt exist and if it did we open it.
-	HANDLE h_file =
-		CreateFile(path, // Path to the file we are creating/opening
-			GENERIC_READ, // We open the file for reading.
-			0, // This deals with sharing which we dont have.
-			NULL, // Security stuff for child processes, its optional and we dont need it.
-			OPEN_ALWAYS, // We open the file if it exists if not we create it.
-			FILE_ATTRIBUTE_HIDDEN, // Hides the file so the user doesnt tamper with by accident. It can be viewed if see hidden files is on.
-			NULL); // Again has to do with security and encription which we dont need.
-
-	// If the file failed to open so we can get the high score we send an error message.
-	if (h_file == INVALID_HANDLE_VALUE) {
-		MessageBox(NULL, L"Failed To Get High Score.", L"ERROR", MB_OK | MB_ICONERROR);
-		return;
-	}
-
-	DWORD num_of_bytes_read = 0;
-	// If the read failed.
-	if (!ReadFile(h_file, &high_score, sizeof(high_score), &num_of_bytes_read, NULL)) {
-		MessageBox(NULL, L"Failed To Read High Score.", L"ERROR", MB_OK | MB_ICONERROR);
-		high_score = 0;
-	}
-
-	// If the number of bytes read is 0 that means we just created the file now(first run ever) so we set high socre to 0 with no error.
-	if (num_of_bytes_read == 0) {
-		high_score = 0;
-	}
-	// If the number of bytes we read was not the amount that should have been put in meaning the data was currupted.
-	else if (num_of_bytes_read != sizeof(high_score)) {
-		MessageBox(NULL, L"Failed To Read High Score.", L"ERROR", MB_OK | MB_ICONERROR);
-		high_score = 0;
-	}
-
-	// We realese the mem we used.
-	CloseHandle(h_file);
-}
-
 // A function to get the cell size for our current window size.
 static int get_cell_size(HWND key_of_window) {
 	RECT screen_size;
@@ -1562,168 +953,4 @@ static void invalidate_cell(HWND hwnd, const POINT* cell, const int cell_size) {
 
 	// We send it to be filled in.
 	InvalidateRect(hwnd, &to_fill, FALSE);
-}
-
-// Gets the start button ready to be shown.
-static void start_button_set_up(HWND parent_window, HWND* button) {
-	RECT client_area;
-	GetClientRect(parent_window, &client_area);
-	int width = (client_area.right - client_area.left) / 7;
-	int hight = (client_area.bottom - client_area.top) / 7;
-	int x = (client_area.right) / 2 - 3 * width / 4;
-	int y = 2 * (client_area.bottom - hight) / 3;
-
-	// We create a big start game button.
-	*button = CreateWindowEx(WS_EX_OVERLAPPEDWINDOW, L"BUTTON", L"start game", WS_VISIBLE | WS_CHILD | WS_TABSTOP | BS_PUSHBUTTON, x, y, width, hight, parent_window, (HMENU)ID_START_BUTTON_MAIN, global_hInstance, NULL);
-
-}
-
-// Function that draws the snake head with our bitmap. 
-static void draw_snake_head(HDC hdc, const RECT* cell) {
-	// If the snake heads bitmap failed to load its null so we just return.
-	if (snake_head_bitmap == NULL) {
-		return;
-	}
-	// We create a memory DC that is compatable with our screen DC.
-	HDC mem_dc = CreateCompatibleDC(hdc);
-
-	// We put the bitmap into the memory DC and save the old one so we can put it back.
-	HBITMAP save_old = (HBITMAP)SelectObject(mem_dc, snake_head_bitmap);
-
-	// Makes the bitmap look good when shrinking.
-	SetStretchBltMode(hdc, HALFTONE);
-	// We reset the brush origion.
-	SetBrushOrgEx(hdc, 0, 0, NULL);
-
-	// We copy the bitmap into the cell taht is the head.
-	StretchBlt(hdc,
-		cell->left, cell->top, cell->right - cell->left, cell->bottom - cell->top, // Destanation x, y, width and hight. 
-		mem_dc, 0, 0,
-		snake_head_bitmap_w, snake_head_bitmap_h, // We load the whole bitmap, its whole width and whole hight.
-		SRCCOPY /*copy the pixles normally*/);
-
-	// Reput the old default back in.
-	SelectObject(mem_dc, save_old);
-
-	// We delete the memory DC we created.
-	DeleteDC(mem_dc);
-}
-
-// Gets the standered button setup for the start of the game.
-static void game_modes_button_set_up(HWND parent_window, HWND* left_button, HWND* main_button, HWND* right_button) {
-	RECT client_area;
-	GetClientRect(parent_window, &client_area);
-	int width = (client_area.right - client_area.left) / 7;
-	int hight = (client_area.bottom - client_area.top) / 15;
-	int x = (client_area.right) / 2 - 3 * width / 4;
-	int y = (client_area.bottom - hight) / 2;
-
-	*left_button = CreateWindowEx(WS_EX_OVERLAPPEDWINDOW, L"BUTTON", L"<", WS_VISIBLE | WS_CHILD | WS_TABSTOP | BS_PUSHBUTTON, x - width / 4, 5 * y / 6, width / 4, hight, parent_window, (HMENU)ID_SWITCH_GAME_MODE_LEFT, global_hInstance, NULL);
-	*right_button = CreateWindowEx(WS_EX_OVERLAPPEDWINDOW, L"BUTTON", L">", WS_VISIBLE | WS_CHILD | WS_TABSTOP | BS_PUSHBUTTON, x + width, 5*y/6, width / 4, hight, parent_window, (HMENU)ID_SWITCH_GAME_MODE_RIGHT, global_hInstance, NULL);
-
-	*main_button = CreateWindowEx(WS_EX_OVERLAPPEDWINDOW, L"BUTTON", L"classic", WS_VISIBLE | WS_CHILD | WS_TABSTOP | BS_PUSHBUTTON, x, 3 * y / 4, width, 2 * hight, parent_window, (HMENU)ID_GAME_MODE_BUTTON, global_hInstance, NULL);
-
-	// We allocate the room in the heap for the array that has all of our game modes that are set up. HEAP_ZERO_MEMORY initializes all spots to NULL.
-	game_mode_windows = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(HWND) * (ID_THREE_APPLES_WALLS_DONT_KILL - ID_CLASSIC + 1));
-	if (game_mode_windows != NULL) {
-		game_mode_windows[0] = *main_button;
-	}
-	else {
-		MessageBox(parent_window, L"Failed To Allocate Memory For Game Modes.", L"ERROR", MB_OK | MB_ICONERROR);
-	}
-}
-
-// Converts UINT value into the correct game mode to print
-static wchar_t* button_int_to_words(UINT val) {
-	// We undo the removing of 3000 in change_game_mode() that helped us with going to spots in arrays.
-	val += ID_CLASSIC;
-	switch (val) {
-		case ID_CLASSIC: {
-			return L"classic";
-			break;
-		}
-		case ID_WALSS_DONT_KILL: {
-			return L"easy";
-			break;
-		}
-		case ID_DISAPEARING_APPLE: {
-			return L"fast";
-			break;
-		}
-		case ID_DISAPEARING_APPLE_WALLS_DONT_KILL: {
-			return L"easy fast";
-			break;
-		}
-		case ID_THREE_APPLES: {
-			return L"multiple apples";
-			break;
-		}
-		case ID_THREE_APPLES_WALLS_DONT_KILL: {
-			return L"easy multiple apples";
-			break;
-		}
-		default: {
-			return NULL;
-		}
-	}
-}
-
-// Function that changes the current button that is shown baides on request.
-static void change_game_mode(HWND parent_window, HWND* main_button, UINT new_mode) {
-	if (new_mode > 3005 || new_mode < 3000) {
-		MessageBox(parent_window, L"Invalid Game Mode", L"ERROR", MB_OK | MB_ICONERROR);
-		return;
-	}
-	// We hide the window that had the previous button.
-	ShowWindow(*main_button, SW_HIDE);
-
-	// If we have already been on this game mode, meaning it has already been opened in the past, we can just unhide it. We remove ID_CLASSIC every time we index to get the exact value for an index.
-	if (game_mode_windows[new_mode - ID_CLASSIC]) {
-		ShowWindow(game_mode_windows[new_mode - ID_CLASSIC], SW_SHOW);
-		cur_game_mode = game_mode_windows[new_mode - ID_CLASSIC];
-		// We are done with this function because we changed the window.
-		return;
-	}
-
-	wchar_t* game_mode = button_int_to_words(new_mode);
-	// If we failed to get the words we print an error and leave.
-	if (game_mode == NULL) {
-		MessageBox(parent_window, L"Failed To Get Game Mode Name", L"ERROR", MB_OK | MB_ICONERROR);
-		return;
-	}
-
-	// We get the spot we will show this button at.
-	RECT client_area;
-	GetClientRect(parent_window, &client_area);
-	int width = (client_area.right - client_area.left) / 7;
-	int hight = (client_area.bottom - client_area.top) / 15;
-	int x = (client_area.right) / 2 - 3 * width / 4;
-	int y = (client_area.bottom - hight) / 2;
-
-	// We create the new button.
-	HWND new_button = NULL;
-	new_button = CreateWindowEx(WS_EX_OVERLAPPEDWINDOW, L"BUTTON", game_mode, WS_VISIBLE | WS_CHILD | WS_TABSTOP | BS_PUSHBUTTON, x, 3 * y / 4, width, 2 * hight, parent_window, (HMENU)(UINT_PTR)new_mode, global_hInstance, NULL);
-	// We save the button as created in the array and update our current game mode.
-	game_mode_windows[new_mode - ID_CLASSIC] = new_button;
-	cur_game_mode = new_button;
-}
-
-static void destroy_window_array() {
-	// If its alreadt Null we can just return.
-	if (game_mode_windows == NULL) {
-		return;
-	}
-	
-	// We go over the whole array.
-	for (int i = 0; i <= ID_THREE_APPLES_WALLS_DONT_KILL - ID_CLASSIC; ++i) {
-		// If a window does exist in that position we destroy it and put it to NULL.
-		if (game_mode_windows[i]) {
-			DestroyWindow(game_mode_windows[i]);
-			game_mode_windows[i] = NULL;
-		}
-	}
-
-	// We free the memory that we allocated from the heap and set the pointer to NULL.
-	HeapFree(GetProcessHeap(), 0, game_mode_windows);
-	game_mode_windows = NULL;
 }
